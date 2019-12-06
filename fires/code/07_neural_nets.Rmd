@@ -1,0 +1,82 @@
+---
+title: "Neural Networks to predict wildfires"
+author: "Will Godwin"
+date: "11/4/2019"
+output: html_document
+---
+---
+title: "SVMs to predict wildfires"
+author: "Will Godwin"
+date: "10/29/2019"
+output: html_document
+---
+
+```{r, echo=F}
+# load libs
+library(RSQLite); library(tidyverse); library(neuralnet); library(purrr)
+
+# read in data
+db <- dbConnect(SQLite(), dbname="~/Desktop/fires/data/FPA_FOD_20170508.sqlite")
+dbListTables(db)
+fires <- dbGetQuery(db, "SELECT * FROM Fires")
+```
+
+In order to construct a model that directly investigates the factors that predict extremely destructive wildfires, I'll restrict the analysis to wildfires >100 acres in size. Beyond allowing us to more precisely identify the primary factors that cause large wildfires, this restriction serves a couple other purposes: balancing the dataset (the vast majority of wildfires are <100 acres) and reducing computation time.
+
+
+```{r}
+# subset the data and restrict to features of interest
+fires1 <- fires %>%
+  filter(FIRE_SIZE>100) %>%
+  mutate(burn_time=CONT_DOY-DISCOVERY_DOY) %>%
+  select(STAT_CAUSE_DESCR, burn_time, FIRE_SIZE, STATE,
+         FIRE_YEAR, DISCOVERY_DOY, SOURCE_SYSTEM_TYPE)
+
+```
+
+```{r exploratory plots}
+# plot the distribution of fire size
+
+```
+
+```{r}
+# scale the numeric data using the min-max normalization method
+data_min <- modify_if(fires1, is.numeric, min, na.rm=T)
+data_max <- modify_if(fires1, is.numeric, min, na.rm=T)
+
+max <- apply(fires1, 2, max)
+min <- apply(fires1, 2, min)
+scaled <- as.data.frame(scale(fires1, center = min, scale = max - min))
+
+```
+
+```{r random sampling}
+# convert character variables to binary factors
+fires_mod <- model.matrix(~ FIRE_SIZE + burn_time + STAT_CAUSE_DESCR + SOURCE_SYSTEM_TYPE +
+                         FIRE_YEAR, data=fires1) %>% as.data.frame() %>% select(-"(Intercept)")
+
+# generate id for each row number
+fires_mod <- fires_mod %>% mutate(id = row_number())
+
+# Create training and test set
+fires.train <- fires_mod %>% sample_frac(.60)
+fires.test <- anti_join(fires_mod, fires.train, by = 'id')
+```
+
+```{r}
+# fit neural network
+set.seed(2)
+NN <- neuralnet(FIRE_SIZE ~ burn_time + SOURCE_SYSTEM_TYPEINTERAGCY + 
+                  SOURCE_SYSTEM_TYPENONFED + FIRE_YEAR,
+               fires.train, hidden = 3, linear.output = T)
+
+# plot neural network
+plot(NN)
+```
+
+```{r}
+#predict on test data
+predict_testNN = compute(NN, fires.test %>% select(burn_time, SOURCE_SYSTEM_TYPEINTERAGCY, 
+                                                   SOURCE_SYSTEM_TYPENONFED,FIRE_YEAR))
+
+```

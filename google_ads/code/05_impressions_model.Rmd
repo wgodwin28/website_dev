@@ -1,0 +1,242 @@
+---
+title: "Prediction of Impressions"
+author: "Will Godwin"
+date: "9/2/2019"
+output: html_document
+---
+
+```{r, include=F}
+#rmarkdown::render(paste0("~/Desktop/google_ads/code/05_impressions_model.Rmd"))
+# clear memory
+rm(list=ls())
+
+#load libs
+library(data.table); library(ggplot2); library(glmnet); 
+library(scales); library(lubridate); library(kableExtra)
+library(VGAM) #multinomial logistic
+library(gbm) #gradient boosting machine
+library(caret) #confusion matrix
+library(randomForest) #random forest
+library(MASS) #linear discriminant analysis
+library(kernlab) #support vector machine
+library(C50) #boosted c5.0
+library(tidyverse)
+```
+
+
+```{r setup, include=F}
+#read in data
+dt <- fread("~/Desktop/google_ads/data/google-political-ads-creative-stats.csv")
+#glimpse(dt)
+
+#relevant variables
+vars_keep <- c("Ad_Type", "Regions", "Advertiser_ID", "Date_Range_Start", "Date_Range_End", 
+               "Num_of_Days", "Impressions", "Spend_Range_Min_USD", "Spend_Range_Max_USD")
+
+#subset to variables of interest and create useful variables
+dt <- dt %>%
+  select(vars_keep) %>% #keep relevant variables
+  mutate(startYear = substr(Date_Range_Start,1,4), #variable indicating year ad started
+         Region = ifelse(grepl("EU", Regions), "EU", "US") %>% as.factor(), #create cleaner regions variable
+         month_year = format(as.Date(Date_Range_Start), "%m-%Y"),
+         week_start = floor_date(as.Date(Date_Range_Start), unit = "week"),
+         week_end = floor_date(as.Date(Date_Range_End), unit = "week"),
+         pricing_cat = paste0(Spend_Range_Min_USD, "-", Spend_Range_Max_USD),
+         Spend_Range_Min_USD = as.factor(Spend_Range_Min_USD),
+         Ad_Type = as.factor(Ad_Type),
+         Impressions = factor(Impressions, levels = c("≤ 10k", "10k-100k", "100k-1M", "1M-10M", "> 10M"),
+                              labels = c("Under 10k", "10k-100k", "100k-1M", "1M-10M", "10M+")))
+
+  #filter(regions=="US") #only include US data
+```
+
+The goal is to build a model that predicts "impressions", or the number of people the ad reached, using relevant advertisement covariates. I'll use political advertisement spending data released by google. The dataset contains over 200,000 unique ads since June 2018 with relevant metadata including *number of impressions* as a ordinal categorical variable. The covariates I'll use to predict impressions are: *ad type* (text, video, or image), *region the ad was showed* (U.S. or E.U.), *number of days the ad aired*, and *lower/upper bounds on dollars spent for the ad*. The first step is understanding the univariate distributions and basic bivariate relationships.
+
+##Data Exploration
+I've already loaded in the data and done a little preprocessing to convert variables to the correct classes and drop all irrelevant columns.
+
+```{r}
+#impressions
+ggplot(dt, aes(Impressions)) +
+  geom_bar() +
+  geom_text(stat = 'count', aes(label = percent(..count../nrow(dt)), vjust = -0.2)) +
+  theme_bw()
+```
+
+Most ads are classified under the "Under 10k" category, indicating an imbalanced classification problem. Due to this imbalance, I'll plot impression counts on the log scale to observe differences at smaller frequecies.
+
+```{r, warning=F}
+#time series plot of ad counts across impression category
+dt %>%
+  group_by(date=as.Date(week_start), Impressions) %>%
+  summarize(weekly_ad_count=n()) %>%
+  ggplot(aes(date, weekly_ad_count, color=Impressions)) +
+    geom_point() +
+    xlab("Date") +
+    ylab("Number of Ads (on log scale)") +
+    geom_vline(xintercept = as.Date("2018/11/06"), linetype=4) +
+    geom_text(aes(x=as.Date("2018/10/28"), y=6400, label=" Midterm"), 
+              colour="blue", angle=90, text=element_text(size=11)) +
+    scale_y_log10() +
+    scale_x_date(labels = date_format("%m/%Y"), breaks = date_breaks("2 month")) +
+    scale_color_discrete(name = "Impressions") +
+    theme_bw()
+```
+
+In order to assess whether start date may be related to number of impressions, I first aggregated the number of ads by week and impression category. Then I plotted the number of ads across the full time series and colored by impression category.
+One takeaway from this plot is a clear relationship between number of ads and ad start date. Ad counts, regardless of impression category, appear to increase up the the 2018 midterm election
+
+Now I'll make a similar plot across region of the world. Note that I chose to plot these frequencies on a log 10 scale in order to illustrate relative frequencies within the lower frequency categories (100k-1M impressions, etc)
+
+```{r}
+#plot impression counts by region
+ggplot(dt, aes(Impressions, fill=Region)) +
+  geom_bar() +
+  scale_y_log10() +
+  ylab("Count (log 10 scale)") +
+  theme_bw()
+```
+
+The EU has fewer ads within each category and appears to have a greater proportion of its ads with >10k impressions compared to the U.S., which indicates that this variable may be a useful covariate in the model.
+
+
+```{r}
+#plot impression counts by type of ad
+ggplot(dt, aes(Impressions, fill=Ad_Type)) +
+  geom_bar() +
+  scale_y_log10() +
+  ylab("Count (log 10 scale)") +
+  theme_bw()
+
+```
+
+I create a "number of days running" variable by combining the ad start date and ad end date, and plot that against number of impressions using a box and whiskers plot.
+
+```{r, warning=F}
+dt %>%
+  mutate(days_running=difftime(Date_Range_End, Date_Range_Start, units = "days")) %>%
+  ggplot(aes(Impressions, days_running)) +
+    geom_boxplot() +
+    ylab("Number of Days Ad Ran") +
+    theme_bw()
+
+```
+
+Looking across the central tendency for each impression category, we see indication of a potential trend: as ad air time increases so does the number of impressions.
+
+```{r model prep}
+#create model data frame for ease of use
+dt.mod <- dt %>%
+  select(Impressions, Num_of_Days, Region, Ad_Type, Spend_Range_Min_USD)
+
+#extract the response and predictors for ease of use
+x<-dt.mod[,2:5]
+y<-dt.mod[,1]
+form <- as.formula(Impressions ~ Num_of_Days + Region + Ad_Type + Spend_Range_Min_USD)
+```
+
+
+##Modelling
+###Multinomial logistic
+```{r, warning=F}
+#Build the model
+model1 <- vglm(formula = form, 
+             data=dt.mod, family="multinomial")
+
+#extract model summary
+#summary(model1)
+
+#Predict using the model
+probability<-predict(model1,x,type="response")
+dt.mod <- dt.mod %>%
+  mutate(predicted_cat = apply(probability,1,which.max),
+         predicted_name = case_when(predicted_cat==1 ~ "Under 10k",
+                                    predicted_cat==2 ~ "10k-100k",
+                                    predicted_cat==3 ~ "100k-1M",
+                                    predicted_cat==4 ~ "1M-10M",
+                                    predicted_cat==5 ~ "10M+"),
+         predicted_name = factor(predicted_name, 
+                                 levels = c("Under 10k", "10k-100k", "100k-1M", "1M-10M", "10M+")))
+
+#Accuracy of the model
+mtab <- table(dt.mod$predicted_name,dt.mod$Impressions)
+library(caret)
+confusionMatrix(mtab)
+```
+Confusion matrix shows the model predictions (row-wise) stacked against the actual data (column-wise). If the model fit the data perfectly, we'd only see values along the diagonal and would see zeros everywhere else. The overall accuracy is 85%, which means that the model gets the prediction correct 85% of the time. Sensitivity (or recall) and specificity varies across the impression categories, as we'd expect. When predicting "Under 10k" impressions, a sensitivity of 0.98 indicates that for all the actual "Under 10k" ads the model correctly labels the data 98% of the time. The relatively poor specificity indicates that the model correctly predicts that an ad will NOT get "Under 10k" impressions 63% of the time. We see the opposite result from the "10M+" impressions category. Because we have an imbalanced classification problem with so few "10M+" impression ads, the model can predict that an ad will not get "10M+" impressions with 99.99% confidence. However, the sensitivity of 0.13 tells us that 87% of actual "10M+" impression ads are incorrectly labeled by the model. 
+
+Model evaluation can be based on overall accuracy of the model or on more specific metrics, depending on the research question. For instance, consider a wealthy, politically-minded business with the goal of running ads that reach as many people as possible. They could start with looking at what covariates are conditionally associated with number of impressions from the model coefficients and infer that as number of days aired increases, so does the number of impressions. Going even further, they could build a model that optimizes for their main goal-accurately predicting ads with millions of impressions. As we noted, the logistic model above does a poor job at this, since it correctly labels a "1-10M" impression ad only
+10% of the time and a "10M+" impression ad only 13% of the time. Let's see if we can improve the accuracy for this specific case using a random forest model.
+
+###Random Forest
+```{r}
+#Build the model-needed to ensure all categorical variables were factors above
+model3 <- randomForest(form, data=dt.mod)
+
+#Summarize the model
+summary(model3)
+
+#Predict using the model
+dt.mod$pred_randomforest <- predict(model3, x)
+
+#Accuracy of the model
+mtab3 <- table(dt.mod$pred_randomforest, dt.mod$Impressions)
+confusionMatrix(mtab3)
+plot(model3)
+partialPlot(model3, pred.data = x, x.var = "Ad_Type")
+```
+
+Compared to multinomial logistic regression, random forest does produce higher sensitivity for lower frequency classes like "1-10M" and "10M+". However, most business execs wouldn't be happy with a model that correctly labels an ad to get "10M+" impressions only 30% of the time. The overall accuracy of the model is similar to the logisitic regression at 85%, indicating that the gains made in sensitivity for high impression classes may have come at cost for other components of model accuracy. Lastly, I'll test the performance of support vector machine.
+
+
+###Boosted C5.0
+```{r}
+#Build the model
+model4 <- C5.0(form, data=dt.mod, trials=8)
+
+#Predict using the model
+dt.mod$pred_c50 <- predict(model4, x)
+
+#Accuracy of the model
+mtab5 <- table(dt.mod$pred_c50, dt.mod$Impression)
+confusionMatrix(mtab5)
+```
+
+A Boosted C5.0 model is based on simple tree-based framework that uses boosting methods. While a random forest splits the predictor space on independent trees into partitions that minimize impurity/maximize information criterion, boosting models grow trees sequentially with the residuals of the previous tree becoming the response variable of the subsequent tree. While this smoothing over residuals may improve model performance in some situations, in this context, the random forest performed slightly better overall.
+
+```{r, eval=F, include=F}
+###Support Vector Machine
+#Build the model
+model5 <- ksvm(form, data=dt.mod)
+
+#Summarize the model
+summary(model5)
+
+#Predict using the model
+dt.mod$pred_svm <- predict(model5, x, type="response")
+
+#Accuracy of the model
+mtab5 <- table(dt.mod$pred_svm, dt.mod$Impression)
+confusionMatrix(mtab5)
+```
+
+```{r, include=F, eval=F}
+###Linear Discriminant Analysis
+#Build the model
+model2 <- lda(formula=form, data=dt.mod)
+
+#Summarize the model
+summary(model2)
+
+#Predict using the model
+dt.mod$pred_lda <- predict(model2,x)$class
+
+#Accuracy of the model
+mtab2 <- table(dt.mod$pred_lda, dt.mod$Impressions)
+confusionMatrix(mtab2)
+
+```
+##Model Evaluation
+
+
+##Model Inference and Functionality

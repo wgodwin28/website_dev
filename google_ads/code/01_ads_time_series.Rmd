@@ -1,0 +1,206 @@
+---
+title: "Google Ads Brief"
+author: "Will Godwin"
+output:
+     pdf_document:
+         latex_engine: xelatex
+---
+
+# Intro
+Google releases advertisement data from political campaigns. Here, we show descriptive summmaries of those advertisements.
+
+```{r, include=F}
+# clear memory
+rm(list=ls())
+
+#load libs
+library(data.table); library(ggplot2); library(glmnet); library(magrittr); library(tidyverse); 
+library(scales); library(lubridate); library(kableExtra)
+```
+
+
+```{r setup, include=F}
+#read in data
+dt <- fread("~/Desktop/google_ads/data/google-political-ads-creative-stats.csv")
+#glimpse(dt)
+
+#relevant variables
+vars_keep <- c("Ad_Type", "Regions", "Advertiser_ID", "Date_Range_Start", "Date_Range_End", "Num_of_Days", 
+               "Impressions", "Spend_Range_Min_USD", "Spend_Range_Max_USD")
+
+#subset to variables of interest and create useful variables
+dt <- dt %>%
+  select(vars_keep) %>% #keep relevant variables
+  mutate(startYear = substr(Date_Range_Start,1,4), #variable indicating year ad started
+         regions = ifelse(grepl("EU", Regions), "EU", "US"), #create cleaner regions variable
+         month_year = format(as.Date(Date_Range_Start), "%m-%Y"),
+         week_start = floor_date(as.Date(Date_Range_Start), unit = "week"),
+         pricing_cat = paste0(Spend_Range_Min_USD, "-", Spend_Range_Max_USD)) %>% 
+  filter(regions=="US") #only include US data
+```
+
+##Ad totals
+Google reported a total of **`r nrow(dt)`** U.S. political ads run on their platform from June 2018 to July 2019. As expected, there's a clear spike in number of ads ran in the weeks leading up to the 2018 midterm (not sure if spike in 04/2019 is real...):
+
+```{r, echo=F, warning=F}
+#time series of number of ads
+dt.plot <- dt %>%
+  group_by(date=as.Date(week_start)) %>%
+  summarize(weekly_ad_count=n())
+
+ggplot(dt.plot, aes(date, weekly_ad_count)) +
+  geom_point() +
+  xlab("Date") +
+  ylab("Number of Ads") +
+  geom_vline(xintercept = as.Date("2018/11/06"), linetype=4) +
+  geom_text(aes(x=as.Date("2018/10/28"), y=8200, label="2018 Midterm"), colour="blue", angle=90, text=element_text(size=11)) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  scale_x_date(labels = date_format("%m/%Y"), breaks = date_breaks("2 month")) +
+  theme_bw()
+```
+
+\newpage
+
+##Ad Pricing
+```{r, include=F}
+dt <- dt %>%
+  mutate(pricing_cat=factor(pricing_cat, 
+                            levels = c("0-100", "100-1000", "1000-50000", "50000-100000", "100000-NA"),
+                            labels = c("0-100", "100-1000", "1000-50000", "50000-100000", "100000 +")))
+#aggregate counts
+ad_price <- dt %>%
+  count("Price Category"=pricing_cat) %>%
+  mutate("Percent"=percent(n/sum(n))) %>%
+  kable()
+
+```
+Google doesn't report the exact price of each ad but instead price categories. Most ads cost under $100:
+`r ad_price`
+
+\vspace{3em}
+
+```{r, echo=F, warning=F, fig.height = 4.5, fig.width = 6.7}
+#time series of ad pricing
+dt.plot <- dt %>%
+  group_by(date=as.Date(week_start), pricing_cat) %>%
+  summarize(weekly_ad_count=n())
+
+ggplot(dt.plot, aes(date, weekly_ad_count, color=pricing_cat)) +
+  geom_point() +
+  xlab("Date") +
+  ylab("Number of Ads") +
+  geom_vline(xintercept = as.Date("2018/11/06"), linetype=4) +
+  geom_text(aes(x=as.Date("2018/10/28"), y=7000, label="2018 Midterm"), colour="blue", angle=90, text=element_text(size=11)) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  scale_x_date(labels = date_format("%m/%Y"), breaks = date_breaks("2 month")) +
+  scale_color_discrete(name = "Ad Price ($)") +
+  theme_bw()
+```
+
+\newpage
+
+##Ad Media Type
+```{r, include=F}
+#aggregate counts
+ad_type <- dt %>%
+  count("Ad Type"=Ad_Type) %>%
+  mutate(Percent=percent(n/sum(n))) %>%
+  arrange(-n) %>%
+  kable()
+```
+The breakdown of ads across the 3 main types of media:
+`r ad_type`
+
+\vspace{3em}
+
+```{r, echo=F, warning=F}
+#time series of ad media type
+dt.plot <- dt %>%
+  group_by(date=as.Date(week_start), Ad_Type) %>%
+  summarize(weekly_ad_count=n())
+
+ggplot(dt.plot, aes(date, weekly_ad_count, color=Ad_Type)) +
+  geom_point() +
+  xlab("Date") +
+  ylab("Number of Ads") +
+  geom_vline(xintercept = as.Date("2018/11/06"), linetype=4) +
+  geom_text(aes(x=as.Date("2018/10/28"), y=7000, label="2018 Midterm"), colour="blue", angle=90, text=element_text(size=11)) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  scale_x_date(labels = date_format("%m/%Y"), breaks = date_breaks("2 month")) +
+  scale_color_discrete(name = "Ad Type") +
+  theme_bw()
+```
+
+\newpage
+
+##Ad Impressions
+```{r, include=F}
+dt <- dt %>%
+  mutate(Impressions = factor(Impressions, levels = c("≤ 10k", "10k-100k", "100k-1M", "1M-10M", "> 10M"),
+                              labels = c("Under 10k", "10k-100k", "100k-1M", "1M-10M", "10M+")))
+ad_impression <- dt %>%
+  count("Number of people"=as.character(Impressions)) %>%
+  mutate(Percent=percent(n/sum(n))) %>%
+  arrange(-n) %>%
+  kable()
+```
+The number of people reached across ads:
+`r ad_impression`
+
+\vspace{3em}
+
+```{r, echo=F, warning=F, fig.height = 4.5, fig.width = 6.7}
+#time series of ad impressions
+dt.plot <- dt %>%
+  group_by(date=as.Date(week_start), Impressions) %>%
+  summarize(weekly_ad_count=n())
+
+ggplot(dt.plot, aes(date, weekly_ad_count, color=Impressions)) +
+  geom_point() +
+  xlab("Date") +
+  ylab("Number of Ads") +
+  geom_vline(xintercept = as.Date("2018/11/06"), linetype=4) +
+  geom_text(aes(x=as.Date("2018/10/28"), y=6400, label="2018 Midterm"), 
+            colour="blue", angle=90, text=element_text(size=11)) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  scale_x_date(labels = date_format("%m/%Y"), breaks = date_breaks("2 month")) +
+  scale_color_discrete(name = "Impressions") +
+  theme_bw()
+```
+
+\newpage
+
+##Ad Air Time (in Days)
+```{r, include=F}
+ad_airtime <- dt %>% 
+  mutate(Days = cut(Num_of_Days, breaks=c(0,10,20,50,420), 
+                    labels = c("1-10", "11-20", "21-50", "50+"))) %>%
+  count(Days) %>%
+  mutate(Percent=percent(n/sum(n))) %>%
+  arrange(-n) %>%
+  kable()
+```
+Length of time each ad aired:
+`r ad_airtime`
+
+\vspace{3em}
+
+```{r, echo=F, warning=F, fig.height = 4.5, fig.width = 6.7}
+#time series of ad air time
+dt.plot <- dt %>%
+  mutate(Days = cut(Num_of_Days, breaks=c(0,10,20,50,420), 
+                    labels = c("1-10", "11-20", "21-50", "50+"))) %>%
+  group_by(date=as.Date(week_start), Days) %>%
+  summarize(weekly_ad_count=n())
+
+ggplot(dt.plot, aes(date, weekly_ad_count, color=Days)) +
+  geom_point() +
+  xlab("Date") +
+  ylab("Number of Ads") +
+  geom_vline(xintercept = as.Date("2018/11/06"), linetype=4) +
+  geom_text(aes(x=as.Date("2018/10/28"), y=7000, label="2018 Midterm"), colour="blue", angle=90, text=element_text(size=11)) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  scale_x_date(labels = date_format("%m/%Y"), breaks = date_breaks("2 month")) +
+  scale_color_discrete(name = "Number Days Aired") +
+  theme_bw()
+```

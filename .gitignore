@@ -1,0 +1,13 @@
+# folders to ignore
+fires/data
+google_ads/data
+
+
+#files to ignore
+*.DS_Store
+.Rproj.user
+google_ads/code/shiny/*.csv
+google_ads/code/dashboard/*.csv
+google_ads/code/*.html
+google_ads/code/*.pdf
+*.Rhistory

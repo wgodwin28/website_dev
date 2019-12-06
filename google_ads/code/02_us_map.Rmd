@@ -1,0 +1,91 @@
+---
+title: "Geographic Distribution of Political Spending in U.S. (2018-2019)"
+author: "Will Godwin"
+date: "8/8/2019"
+output: pdf_document
+---
+
+#Intro
+Map created using Google Polical Ads database
+
+```{r, include=F, echo=F}
+# clear memory
+rm(list=ls())
+
+#load libs
+library(data.table); library(ggplot2); library(glmnet); library(magrittr); library(tidyverse); 
+library(scales); library(lubridate); library(kableExtra); library(sf); library(rgdal)
+```
+
+
+```{r setup, include=F}
+#read in shapefile of US states
+#shape <- st_read("~/Desktop/google_ads/data/gadm36_USA_shp/gadm36_USA_1.shp")
+#shape <- st_crop(shape, xmin= -124.7328, ymin= 24.95638, xmax= -66.96927, ymax= 49.37173)
+#shape <- readOGR("~/Desktop/google_ads/data/gadm36_USA_shp/gadm36_USA_1.shp")
+shape <- st_read("~/Desktop/google_ads/data/states_21basic/states.shp")
+s_pop <- as.data.table(shape)[,.(STATE_NAME, STATE_ABBR)]
+#from here: https://www.arcgis.com/home/item.html?id=f7f805eb65eb4ab787a0a3e1116ca7e5
+
+#subset shapefile
+# shape <- shape %>%
+#   filter(HASC_1 != "US.DC") %>%
+#   mutate(state_var=substr(HASC_1,4,5)) %>%
+#   select(state_var)
+
+shape <- shape %>%
+  filter(STATE_ABBR != "AK") %>%
+  filter(STATE_ABBR != "HI") %>%
+  mutate(state_var=STATE_ABBR) %>%
+  select(state_var, STATE_NAME)
+
+#read in data
+dt <- fread("~/Desktop/google_ads/data/google-political-ads-geo-spend.csv")
+
+#sum spending over state
+dt <- dt %>%
+  filter(Country=="US") %>%
+  group_by(Country_Subdivision_Primary) %>%
+  summarise(spending=sum(Spend_USD)) %>%
+  mutate(state_var=substr(Country_Subdivision_Primary, 4, 5)) %>%
+  select(spending, state_var)
+
+#merge together
+shape.data <- inner_join(shape, dt, by="state_var") %>%
+  select(spending, state_var, STATE_NAME)
+
+```
+#Intro
+Money diverted to political advertising has become a massive industry as technology has brought us high-speed internet and political organizations are able to form superPACs. Understanding where in the U.S. this money is focused can provide insight into what populations and regions of the country political candidates want to target. Google, to its credit, releases spending on political ads for its platform in a easily accessible manner, which makes this investigation much easier. Here I show U.S, state-level maps of spending on political ads since June 2018.
+
+After downloading the data and performing some rudimentary cleaning, the data are ready to map. You can find all the code I used for this analysis on my github (link). The first map below shows absolute spending from June 2018-July 2019. Clearly, California and Florida stand out as the top recipients of political ad dollars. However, there are some surprising states near the top as well, with Texas, Arizona, Missouri, and Tennessee all receiving more that 4 million dollars since June 2018.
+```{r plot}
+#Make map
+ggplot() + 
+  geom_sf(data=shape.data, aes(fill=spending), color="gray30") +
+  scale_fill_viridis_c(labels=comma, name="USD") +
+  ggtitle("Spending June 2018 to July 2019")
+  #coord_sf
+```
+However, this trend could be entertwined with population. In order to get a perspective on how much any one person may encounter a google political ad by state, the map needs to be population-weighted. The map below shows spending after population adjustment. With spending over $1000 per 1000 people, Montana, North Dakota, and Nevada take the top spots which is not as surprising considering these states have some of the lowest population sizes and greatest representation in the Senate. Notably, this map shows that Tennesse, Missouri, and Arizona rank high not only in absolute spending but in relative spending 
+
+```{r}
+#read in 2018 population data
+#dowloaded here: https://www2.census.gov/programs-surveys/popest/datasets/2010-2018/state/asrh/
+pop <- fread("~/Desktop/google_ads/data/us_pop.csv")[,.(NAME, POPESTIMATE2018, POPEST18PLUS2018)]
+shape.data <- left_join(shape.data, pop, by=c("STATE_NAME"="NAME"))
+
+#calculate pop-weighted spending
+shape.data <- shape.data %>%
+  mutate(pop_spending=(spending/POPEST18PLUS2018)*1000)
+
+#Make map
+ggplot() + 
+  geom_sf(data=shape.data, aes(fill=pop_spending), color="gray30") +
+  scale_fill_viridis_c(labels=comma, name="USD/1000 people") +
+  ggtitle("Pop-weighted spending June 2018 to July 2019")
+  #coord_sf
+
+```
+
+Future posts will dive into the temporal distribution and political leanings of political ad spending.

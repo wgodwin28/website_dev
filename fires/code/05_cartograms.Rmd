@@ -1,0 +1,83 @@
+---
+title: "Cartograms of Wildfires"
+author: "Will Godwin"
+date: "10/11/2019"
+output: html_document
+---
+
+```{r setup}
+#necessary libs
+library(RSQLite); library(raster); library(tidyverse); library(tweenr); library(broom); library(sf)
+library(viridis); library(lubridate); library(cartogram); library(gganimate); library(maptools)
+
+#Read in wildfire data-it's in SQLite format so we'll query the local db
+db <- dbConnect(SQLite(), dbname="~/Desktop/fires/data/FPA_FOD_20170508.sqlite")
+fires <- dbGetQuery(db, "SELECT * FROM Fires")
+
+#read in shapefile of US states
+shape <- shapefile("~/Desktop/fires/data/states_21basic/states.shp")
+
+#calculate yearly total fires for each state
+fires_state <- fires %>%
+  filter(STATE != "AK") %>%
+  filter(STATE != "HI") %>%
+  filter(FIRE_SIZE>=100 & FIRE_YEAR==2015) %>%
+  group_by(FIRE_YEAR, STATE_ABBR=STATE) %>%
+  count() %>%
+  rename(num_fires=n)
+
+#merge shapefile with fire data
+shape_data <- merge(shape, fires_state, by="STATE_ABBR", all.x=F)
+#shape_data <- st_as_sf(shape_data)
+
+shape_data <- tidy(shape_data) %>% left_join(. , shape_data@data, by=c("id"="STATE_ABBR")) 
+
+#quick plot of fires to see unmanipulated map
+shape_data <- tidy(shape_data)
+ggplot() +
+  geom_polygon(data = tidy(shape_data), aes(fill=n, x=long, y=lat, group=group), size=0, alpha=0.9)
+  geom_sf(data=shape_data, aes(fill=n)) +
+  scale_fill_viridis_c(name="Fires")
+
+#calculate cartogram
+fires_cart <- cartogram_cont(shape_data, "n", itermax=7)
+plot(fires_cart)
+
+#convert shape to sf object for ggplot
+fires_sf <- st_as_sf(fires_cart)
+
+#ggplot cartogram
+ggplot() +
+  geom_sf(data=fires_sf, aes(fill=n)) +
+  scale_fill_viridis_c(name="Fires")
+
+```
+
+
+```{r}
+#give an id to every single point that compose the boundaries
+fires_sf %<>% 
+  mutate(id=seq(1,nrow(fires_sf)), time=2)
+shape_data %<>% 
+  mutate(id=seq(1,nrow(shape_data)), time=1)
+
+# Bind both map info in a data frame. 3 states: map --> cartogram --> map
+data <- rbind(shape_data, fires_sf, shape_data %>% mutate(time=3))
+ 
+# Set transformation type + time
+data$ease <- "cubic-in-out"
+
+# Calculate the transition between these 2 objects?
+dt <- tween_elements(data, time='time', group='id', ease='ease', nframes = 30)
+dt <- st_as_sf(dt)
+ggplot() + 
+  geom_sf(data = dt %>% filter(.frame==30), aes(fill=n), size=0, alpha=0.9) +
+  scale_fill_viridis_c(name="Fires")
+
+#gganimate
+p <- ggplot() +
+  geom_polygon(data=dt %>% filter(.frame==0), 
+    aes(fill = n, x = long, y = lat, group = group), size=0, alpha=0.9)
+  geom_sf(data = dt, aes(fill=n, group=.group, frame=.frame)) +
+  scale_fill_viridis_c(name="Fires")
+```
