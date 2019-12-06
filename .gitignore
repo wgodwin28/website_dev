@@ -10,4 +10,6 @@ google_ads/code/shiny/*.csv
 google_ads/code/dashboard/*.csv
 google_ads/code/*.html
 google_ads/code/*.pdf
+fires/code/*.html
+fires/code/*.pdf
 *.Rhistory
