@@ -2,13 +2,13 @@
 library(tidyverse); library(data.table); library(lubridate)
 
 #find date when data was downloaded last
-data_dir <- "../data/"
+data_dir <- "google_ads/data/"
 #if(interactive()) data_dir <- "google_ads/data/"
 dwnld_date <- file.info(paste0(data_dir, "google-political-ads-transparency-bundle/google-political-ads-advertiser-weekly-spend.csv"))$mtime %>% as.Date()
 dwnld_month <- lubridate::month(dwnld_date, label = T, abbr=F)
 
 #if not downloaded in past 7 days, re-download
-if(dwnld_date < Sys.Date() - 7){
+if(dwnld_date < Sys.Date() - 6){
   #set url and file destination
   url <- "https://storage.googleapis.com/transparencyreport/google-political-ads-transparency-bundle.zip"
   dest <- paste0(data_dir, "google_ads.zip")
@@ -49,4 +49,4 @@ dt <- dt %>%
   mutate(Days = cut(Num_of_Days, breaks=c(0,10,20,50,420), 
                     labels = c("1-10", "11-20", "21-50", "50+")))
 #save
-write.csv(dt, "shiny/shiny_data.csv", row.names = F)
+write.csv(dt, "google_ads/code/shiny/shiny_data.csv", row.names = F)

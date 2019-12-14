@@ -61,8 +61,8 @@ ui <- fluidPage(
                    value = F),
      # adding the new div tag to the sidebar            
      tags$div(class="header", checked=NA,
-              tags$p("Interested in the underlying code?"),
-              tags$a(href="https://github.com/wgodwin28/wgodwin28.github.io", "Find it here"))
+              #tags$p("Interested in the underlying code?"),
+              tags$a(href="https://github.com/wgodwin28/website_dev/blob/master/google_ads/code/shiny/app.R", "Find code here"))
     ),
     mainPanel(
       plotOutput("coolplot"), #output placeholder 1
