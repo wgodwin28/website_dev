@@ -1,7 +1,9 @@
 # folders to ignore
 fires/data
 google_ads/data
-
+seawall/data
+impeachment/data
+impeachment/output
 
 #files to ignore
 *.DS_Store

@@ -1,0 +1,15 @@
+---
+title: "The Tide is High"
+author: "Will Godwin"
+date: "12/21/2019"
+output: html_document
+---
+
+
+Show each of the poverty and cost maps individually to give reader a sense of the absolute values.
+
+the more magenta, the poorer the district and as the greeness increases, so does per capita seawall expenditures. The green and magenta colors converge on dark blue as both poverty and seawall costs increase. The states of the southern coastline, including the Carolinas, Georgia, Florida, Mississippi, and Lousiana, holds almost exclusively all the dark-blue districts-those in the upper decile for both poverty and seawall costs.
+
+Compare how california has high costs but much less poverty.
+
+Costs may be largely a function of total coastline but there still remains a trend of poorer districts have larger coastline.
