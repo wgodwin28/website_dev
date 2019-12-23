@@ -1,3 +1,11 @@
+---
+title: "High Tide Tax"
+author: "Will Godwin"
+date: "12/22/2019"
+output: pdf_document
+---
+
+```{r setup, echo=F, warning=F, message=F}
 ##########################################################################################################
 #setup####################################################################################################
 ##########################################################################################################
@@ -89,54 +97,49 @@ df_pop <- read.csv(pop_filepath) %>%
 shape_data <- left_join(shape_data, df_pop, by=c("district", "state")) %>%
   mutate(pop=as.numeric(as.character(pop)),
          value_percap=value/pop,
-         value_percap_cat=cut(value_percap, breaks = c(0,350,1500,4000,10000,40000), labels = c("0-350", "350-1,500", "1,500-4,000", "4,000-10,000", "10,000+"))) %>%
+         value_percap_cat=cut(value_percap, breaks = c(0,350,1500,4000,10000,40000), 
+                              labels = c("0-350", "350-1,500", "1,500-4,000", "4,000-10,000", "10,000+"))) %>%
   filter(!is.na(value_percap)) #some values are missing for some reason-messes up the bivariate classes
-
-##########################################################################################################
-#cost maps################################################################################################
-##########################################################################################################
-#subset and plot
-shape_data %>%
-  filter(state=="MA") %>%
-  mutate(value=value/10^6) %>%
-  ggplot() + 
-  geom_sf(aes(fill=value), color="gray30") +
-  scale_fill_viridis_c(name="USD in millions") +
-  ggtitle("MA")
-
-#loop through each state and plot
+```
 
 
-#plot for US
-pdf(paste0(out_dir, "us_cost_2040_wsurge_percap.pdf"))
-shape_data %>%
-  mutate(value=value/10^6) %>%
-  filter(!is.na(value_percap_cat)) %>%
-  ggplot() + 
-    geom_sf(aes(fill=value_percap_cat)) +
-    #scale_fill_viridis_c(name="USD per capita") +
-    ggtitle("US Seawall Cost per capita-2040 with 1 year surge") +
-    scale_fill_manual(values=c("#f6eff7", "#bdc9e1", "#67a9cf", "#1c9099", "#016c59"), name="USD") +
-    scale_color_manual(values=c("#f6eff7", "#bdc9e1", "#67a9cf", "#1c9099", "#016c59"), name="USD") +
-    theme_bw()
-dev.off()
-
-#plot by distance for US
-pdf(paste0(out_dir, "us_cost_2040_wsurge_permile.pdf"))
+```{r cost by mile map, echo=F, warning=F}
+#plot cost by mile of sea wall
 shape_data %>%
   mutate(value_dist=value_dist/10^6) %>%
   filter(!is.na(value_dist)) %>%
   ggplot() + 
   geom_sf(aes(color=value_dist, fill=value_dist)) +
   #scale_fill_viridis_c(name="USD per capita") +
-  ggtitle("US Seawall Cost per mile-2040 with 1 year surge") +
+  ggtitle("US Seawall cost per mile-2040 with 1 year surge") +
   scale_fill_viridis_c(name="USD in millions") +
   scale_color_viridis_c(name="USD in millions") +
   theme_bw()
-dev.off()
-##########################################################################################################
-#poverty maps#############################################################################################
-##########################################################################################################
+```
+
+Average cost of seawall construction per mile by congressional district. Calculated by dividing the estimated cost of seawall construction by the estimated length of sea wall in miles. All estimates refer to 2040 predictions of RCP 4.6, with 1-year storm surge.
+
+\newpage
+
+```{r cost per capita map, echo=F, warning=F}
+#plot seawall cost per capita
+shape_data %>%
+  mutate(value=value/10^6) %>%
+  filter(!is.na(value_percap_cat)) %>%
+  ggplot() + 
+    geom_sf(aes(fill=value_percap_cat)) +
+    #scale_fill_viridis_c(name="USD per capita") +
+    ggtitle("US Seawall cost per capita-2040 with 1 year surge") +
+    scale_fill_manual(values=c("#f6eff7", "#bdc9e1", "#67a9cf", "#1c9099", "#016c59"), name="USD") +
+    scale_color_manual(values=c("#f6eff7", "#bdc9e1", "#67a9cf", "#1c9099", "#016c59"), name="USD") +
+    theme_bw()
+```
+
+Average cost of seawall construction per capita by congressional district. Population estimates sourced from [American Community Survey in 2017](https://factfinder.census.gov/faces/tableservices/jsf/pages/productview.xhtml?pid=ACS_17_5YR_DP05&src=pt).
+
+\newpage
+
+```{r poverty prep, echo=F, warning=F}
 #poverty data: https://factfinder.census.gov/faces/tableservices/
 df_pov <- read.csv(demo_filepath) %>%
   select(contains("GEO"), poverty=HC03_VC161) %>% #percent of families/people whose income below poverty in past 12 months-2017
@@ -153,22 +156,26 @@ shape_data <- left_join(shape_data, df_pov, by=c("district", "state"))
 
 #create classes
 shape_data <- bi_class(shape_data, x = value_percap, y = poverty, style = "quantile", dim = 3)
+```
 
+
+```{r cost by poverty map, echo=F, warning=F}
 #bivariate plot
-pdf(paste0(out_dir, "us_cost_2040_bivariate.pdf"))
 map <- ggplot() +
   geom_sf(data = shape_data, mapping = aes(fill = bi_class), color = "white", size = 0.1, show.legend = F) +
   bi_scale_fill(pal = "DkBlue", dim = 3) +
-  labs(title = "Seawall cost and Poverty in U.S.") +
+  labs(title = "Seawall cost and poverty") +
   bi_theme()
 
 legend <- bi_legend(pal = "DkBlue",
           dim = 3,
           xlab = "Higher seawall costs ",
-          ylab = "Higher poverty ",
+          ylab = "Higher % in poverty ",
           size = 8) 
 
 ggdraw() +
   draw_plot(map, 0, 0, 1, 1) +
-  draw_plot(legend, x=0.35, y=.45, 0.2, 0.2)
-dev.off()
+  draw_plot(legend, x=0.25, y=.35, 0.4, 0.4)
+```
+
+Bivariate map illustrating seawall costs per capita and percent of district living at or below the poverty line. The more magenta, the poorer the district and the greener, the most costly seawall per capita. The green and magenta colors converge on dark blue as both poverty and seawall costs increase. Poverty data also from [American Community Survey in 2017](https://factfinder.census.gov/faces/tableservices/jsf/pages/productview.xhtml?pid=ACS_17_5YR_DP05&src=pt).

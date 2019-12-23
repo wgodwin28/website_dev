@@ -2,6 +2,7 @@
 fires/data
 google_ads/data
 seawall/data
+seawall/output
 impeachment/data
 impeachment/output
 
@@ -14,4 +15,6 @@ google_ads/code/*.html
 google_ads/code/*.pdf
 fires/code/*.html
 fires/code/*.pdf
+seawall/code/*.html
+seawall/code/*.pdf
 *.Rhistory
