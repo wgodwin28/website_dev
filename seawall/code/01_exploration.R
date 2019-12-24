@@ -154,7 +154,7 @@ shape_data <- left_join(shape_data, df_pov, by=c("district", "state"))
 #create classes
 shape_data <- bi_class(shape_data, x = value_percap, y = poverty, style = "quantile", dim = 3)
 
-#bivariate plot
+#bivariate plot-other ideas for plots-https://vallandingham.me/multivariate_maps.html
 pdf(paste0(out_dir, "us_cost_2040_bivariate.pdf"))
 map <- ggplot() +
   geom_sf(data = shape_data, mapping = aes(fill = bi_class), color = "white", size = 0.1, show.legend = F) +
