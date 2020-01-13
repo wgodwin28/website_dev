@@ -1,0 +1,15 @@
+---
+title: "Effects of Impeachment on Donations"
+author: "Will Godwin"
+date: "1/12/2020"
+output: html_document
+---
+
+```{r, echo=F}
+
+library(tidyverse)
+#read in party leaning data by congressional district
+df <- read_csv(paste0(here::here(),"/impeachment/data/data-5vPn3.csv"))
+df_ob2tr <- df %>% 
+  filter(`Obama %` > `Romney %` & `Trump %` > `Clinton %`)
+```
