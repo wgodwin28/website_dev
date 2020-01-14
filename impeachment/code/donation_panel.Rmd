@@ -6,10 +6,89 @@ output: html_document
 ---
 
 ```{r, echo=F}
+#libraries
+library(tidyverse); library(data.table); library(maps) #for the state abbrevs
 
-library(tidyverse)
-#read in party leaning data by congressional district
-df <- read_csv(paste0(here::here(),"/impeachment/data/data-5vPn3.csv"))
-df_ob2tr <- df %>% 
-  filter(`Obama %` > `Romney %` & `Trump %` > `Clinton %`)
+#filepaths and filenames
+vot_filepath <- paste0(here::here(),"/impeachment/data/data-5vPn3.csv")
+#vot_filepath2 <- paste0(here::here(),"/impeachment/data/presidential_precincts_2016.rda")
+don_filepath <- paste0(here::here(),"/impeachment/data/djt_forprez_0101_0531.csv")
+don_filepath2 <- paste0(here::here(),"/impeachment/data/djt_forprez_0601_1231.csv")
+zip_filepath <- paste0(here::here(),"/impeachment/data/natl_zccd_delim.csv")
+pop_filepath <- paste0(here::here(),"/impeachment/data/pop-by-zip-code.csv")
+out_dir <- paste0(here::here(),"/impeachment/output/")
 ```
+
+```{r, echo=F}
+#read donation data
+#main presidential pac-https://www.fec.gov/data/
+df <- read_csv(don_filepath)
+df2 <- read_csv(don_filepath2)
+df <- bind_rows(df, df2)
+df <- df %>% as_tibble(.name_repair = "unique")
+
+#restrict to relevant columns
+df <- df %>% 
+  mutate(date=as.Date(contribution_receipt_date)) %>%
+  select(contributor_zip, contribution_receipt_amount, date)
+```
+
+```{r, echo=F}
+#read in party leaning data by congressional district
+df_vot <- read_csv(vot_filepath) %>%
+  mutate_at(vars(contains("%")), as.double)
+
+#read in party leaning by precinct-https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D
+#load(vot_filepath2)
+
+#read zip code to congressional district data
+df_zip <- read_csv(zip_filepath) %>% #https://www.census.gov/geographies/reference-files/2010/geo/relationship-files.html
+  left_join(state.fips %>% select(fips, abb), by=c("State"="fips")) %>% #merge on state abbrev
+  mutate(district=formatC(`Congressional District`, width = 2, 
+                          format = "d", flag = "0"), #add leading zero to district variable
+         state_dist=paste0(abb, "-", district), #concatenate state abbrev and district
+         ZCTA=as.character(ZCTA)) %>%
+  select(ZCTA, state_dist)
+
+#good article describing issues w linking zip and cong district-https://www.azavea.com/blog/2017/07/26/accuracy-zip-district-matching/
+#merge together zip codes with the congressional district voting record
+df_vot_zip <- right_join(df_vot, df_zip, by=c("Dist"="state_dist"))
+
+#merge voting records with donations by zip code
+df1 <- inner_join(df, df_vot_zip, by=c("contributor_zip"="ZCTA")) ## ~66,000 (5%) contribution records didn't merge
+```
+
+
+```{r, echo=F}
+#read in population to generate per capita cost - https://data.world/lukewhyte/us-population-by-zip-code-2010-2016
+df_pop <- read_csv(pop_filepath) %>%
+  select(zip_code, pop=`y-2016`)
+
+#merge on population and format month variable
+df1 <- left_join(df1, df_pop, by=c("contributor_zip"="zip_code")) %>%
+  mutate(month=as.Date(paste0(substr(date, 1, 7), "-01")),
+         week =as.Date(paste0(substr(date, 1, 4), "-",
+                              substr(date, 6, 7), "-01")))
+```
+
+
+```{r, echo=F}
+#generate voting indicators
+df1 %>%
+  mutate(
+    trump_value=`Trump %` - `Clinton %`,
+    Party=case_when(
+      trump_value>10 ~ "Trump",
+      trump_value< -10 ~ "Clinton")) %>%
+  group_by(week, Party) %>%
+  summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
+            total_cons=n()) %>%
+  filter(!is.na(Party)) %>%
+  ggplot() +
+  geom_line(aes(week, total_cons, color=Party))
+
+```
+
+
+Why are Clinton districts donating more?
+Why are winter months not showing up? They're not out yet...
