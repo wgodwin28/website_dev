@@ -7,7 +7,7 @@ output: html_document
 
 ```{r, echo=F}
 #libraries
-library(tidyverse); library(data.table); library(maps) #for the state abbrevs
+library(tidyverse); library(lubridate); library(maps) #for the state abbrevs
 
 #filepaths and filenames
 vot_filepath <- paste0(here::here(),"/impeachment/data/data-5vPn3.csv")
@@ -17,6 +17,11 @@ don_filepath2 <- paste0(here::here(),"/impeachment/data/djt_forprez_0601_1231.cs
 zip_filepath <- paste0(here::here(),"/impeachment/data/natl_zccd_delim.csv")
 pop_filepath <- paste0(here::here(),"/impeachment/data/pop-by-zip-code.csv")
 out_dir <- paste0(here::here(),"/impeachment/output/")
+
+#find zip codes for given state
+zipsBystate <- function(df, state) {
+  df %>% filter(str_detect(state_dist, state)) %>% pull(unique(ZCTA))
+}
 ```
 
 ```{r, echo=F}
@@ -30,9 +35,13 @@ df <- df %>% as_tibble(.name_repair = "unique")
 #restrict to relevant columns
 df <- df %>% 
   mutate(date=as.Date(contribution_receipt_date)) %>%
-  select(contributor_zip, contribution_receipt_amount, date)
+  select(contributor_zip, contribution_receipt_amount, date, contributor_name)
 ```
 
+Steps of data prep:
+1. Read in voting history by congressional district
+2. Read in file that links zip code to congressional district (roughly-there are some errors in this, one example is districts AL-06 and AL-07 belong to the same zip code, 35005, but have extremely different political leanings. And conversely, multiple congressional districts can belong to one zip code so it gets a bit messy)
+3.
 ```{r, echo=F}
 #read in party leaning data by congressional district
 df_vot <- read_csv(vot_filepath) %>%
@@ -43,7 +52,9 @@ df_vot <- read_csv(vot_filepath) %>%
 
 #read zip code to congressional district data
 df_zip <- read_csv(zip_filepath) %>% #https://www.census.gov/geographies/reference-files/2010/geo/relationship-files.html
-  left_join(state.fips %>% select(fips, abb), by=c("State"="fips")) %>% #merge on state abbrev
+  mutate(State=as.integer(State)) %>%
+  left_join(state.fips %>% select(fips, abb) %>% distinct(fips, .keep_all = T), #must drop non-unique rows
+            by=c("State"="fips")) %>% #merge on state abbrev
   mutate(district=formatC(`Congressional District`, width = 2, 
                           format = "d", flag = "0"), #add leading zero to district variable
          state_dist=paste0(abb, "-", district), #concatenate state abbrev and district
@@ -53,11 +64,39 @@ df_zip <- read_csv(zip_filepath) %>% #https://www.census.gov/geographies/referen
 #good article describing issues w linking zip and cong district-https://www.azavea.com/blog/2017/07/26/accuracy-zip-district-matching/
 #merge together zip codes with the congressional district voting record
 df_vot_zip <- right_join(df_vot, df_zip, by=c("Dist"="state_dist"))
-
-#merge voting records with donations by zip code
-df1 <- inner_join(df, df_vot_zip, by=c("contributor_zip"="ZCTA")) ## ~66,000 (5%) contribution records didn't merge
 ```
 
+
+```{r, echo=F}
+#address the duplicate zip codes before joining with contribution data
+#there are multiple districts in one zip code. These zip codes tend to 
+#be blue so when I joined the contributions data and the voter history on zip
+#code, these rows were duplicated, falsely increasing blue districts contributions.
+dup_zips <- df_vot_zip %>% filter(duplicated(ZCTA)) %>% pull(unique(ZCTA))
+t5 <- df_vot_zip %>% filter(ZCTA %in% dup_zips) %>% arrange(ZCTA) %>% 
+  mutate(trump_value=`Trump %` - `Clinton %`,
+         Party=case_when(trump_value>0 ~ 1, trump_value<0 ~ 0)) %>%
+  group_by(ZCTA) %>%
+  summarise(p=mean(Party))
+table(t5$p)
+confl_zips <- t5 %>% filter(p>0 & p<1) %>% pull(unique(ZCTA))
+
+
+df_vot_zip <- df_vot_zip %>%
+  #drop zip codes that have multiple districts supporting opposing parties
+  filter(ZCTA %in% setdiff(ZCTA, confl_zips)) %>%
+  
+  #keep the first row for each unique zip code since remaining zip codes 
+  #w/ 2+ districts all support same party
+  distinct(ZCTA, .keep_all = T)
+```
+
+
+```{r, echo=F}
+#merge voting records with donations by zip code
+#df1 <- inner_join(df, df_vot_zip, by=c("contributor_zip"="ZCTA"))
+df1 <- left_join(df, df_vot_zip, by=c("contributor_zip"="ZCTA"))
+```
 
 ```{r, echo=F}
 #read in population to generate per capita cost - https://data.world/lukewhyte/us-population-by-zip-code-2010-2016
@@ -67,28 +106,41 @@ df_pop <- read_csv(pop_filepath) %>%
 #merge on population and format month variable
 df1 <- left_join(df1, df_pop, by=c("contributor_zip"="zip_code")) %>%
   mutate(month=as.Date(paste0(substr(date, 1, 7), "-01")),
-         week =as.Date(paste0(substr(date, 1, 4), "-",
-                              substr(date, 6, 7), "-01")))
+         week =as.Date(paste0(substr(date, 1,4), "-", week(date), "-", 1),
+                                     format="%Y-%U-%u"),
+         trump_value=`Trump %` - `Clinton %`)
 ```
 
-
+Minimal data cleaning was done-about XX% of contributions were negative but didn't seem to change the overall trend when these data were excluded.
 ```{r, echo=F}
 #generate voting indicators
 df1 %>%
-  mutate(
-    trump_value=`Trump %` - `Clinton %`,
-    Party=case_when(
-      trump_value>10 ~ "Trump",
-      trump_value< -10 ~ "Clinton")) %>%
-  group_by(week, Party) %>%
-  summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
-            total_cons=n()) %>%
+  mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton")) %>%
   filter(!is.na(Party)) %>%
+  group_by(month, Party) %>%
+  summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
+            total_cons=n(),
+            total_uni_cons=length(unique(contributor_name))) %>%
   ggplot() +
-  geom_line(aes(week, total_cons, color=Party))
-
+  geom_line(aes(month, total_dollars, color=Party)) +
+  geom_text(aes(month, total_dollars, label=total_uni_cons))
+```
+```{r, echo=F}
+#loop through these swing states using map function
+wi_zips <- zipsBystate(df=df_zip, state="WI")
+purrr::map(c("WI", "MI"), zipsBystate)
+#generate voting indicators for WI
+df1 %>%
+  mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton")) %>%
+  filter(!is.na(Party) & contributor_zip %in% wi_zips) %>%
+  group_by(month, Party) %>%
+  summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
+            total_cons=n(),
+            total_uni_cons=length(unique(contributor_name))) %>%
+  ggplot() +
+  geom_line(aes(month, total_dollars, color=Party)) +
+  geom_text(aes(month, total_dollars, label=total_uni_cons))
 ```
 
-
 Why are Clinton districts donating more?
-Why are winter months not showing up? They're not out yet...
+Why are there some negative contributions? Did these donors revoke contribution somehow?
