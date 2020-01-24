@@ -1,5 +1,5 @@
 ---
-title: "Effects of Impeachment on Donald Trump's Donors"
+title: "Effects of Impeachment on Trump Campaign Donations"
 author: "Will Godwin"
 date: "1/17/2020"
 output:
@@ -10,26 +10,24 @@ output:
 ---
 **NOTE**: This analysis will be updated with FEC data through 12/31/2019 once those data become available in the coming weeks.
 
-## Abstract
-
-<div style="margin-bottom:20px;">
-
-## Intro
+# Intro
 With escalating U.S.-Iran tensions reaching [near-war outcomes](https://apnews.com/b687c7be0a03c2c6c53397c2f9406f24) and long-awaited democratic caucuses set to begin, the impeachment inquiry can momentarily slip from political view. But, indeed the U.S. 44th president, Donald John Trump, was impeached by the House of Representatives last December and the trial in the Senate began yesterday at the time of print. As the impeachment trial progresses, a pressing question is how Americans are processing and responding to the proceeding. One quantifiable response is political donations, particularly to Trump's re-election campaigns. Here, I investigated time trends in donations to Trump's re-election campaigns across the U.S., stratifying by political orientation based on 2016 presidential election results. Additionally, I investigated these trends within swing states that contain many moderate voters and will likely decide the 2020 general election.
-</div>
 
 ```{r, echo=F, message=F, warning=F}
+#<div style="margin-bottom:20px;">
+#</div>
 #libraries
 library(lubridate); library(maps); library(tidyverse); library(epuRate) #for the state abbrevs
 
 #filepaths and filenames
-vot_filepath <- paste0(here::here(),"/impeachment/data/data-5vPn3.csv")
-#vot_filepath2 <- paste0(here::here(),"/impeachment/data/presidential_precincts_2016.rda")
-don_filepath <- paste0(here::here(),"/impeachment/data/djt_forprez_0101_0531.csv")
-don_filepath2 <- paste0(here::here(),"/impeachment/data/djt_forprez_0601_1231.csv")
-zip_filepath <- paste0(here::here(),"/impeachment/data/natl_zccd_delim.csv")
-pop_filepath <- paste0(here::here(),"/impeachment/data/pop-by-zip-code.csv")
-out_dir <- paste0(here::here(),"/impeachment/output/")
+dir <- here::here()
+vot_filepath <- paste0(dir,"/impeachment/data/data-5vPn3.csv")
+#vot_filepath2 <- paste0(dir,"/impeachment/data/presidential_precincts_2016.rda")
+don_filepath <- paste0(dir,"/impeachment/data/djt_forprez_0101_0531.csv")
+don_filepath2 <- paste0(dir,"/impeachment/data/djt_forprez_0601_1231.csv")
+zip_filepath <- paste0(dir,"/impeachment/data/natl_zccd_delim.csv")
+pop_filepath <- paste0(dir,"/impeachment/data/pop-by-zip-code.csv")
+out_dir <- paste0(dir,"/impeachment/output/")
 
 #find zip codes for given state
 zipsBystate <- function(df, state) {
@@ -37,7 +35,7 @@ zipsBystate <- function(df, state) {
 }
 ```
 
-```{r, echo=F, message=F, warning=F, eval=F}
+```{r, message=F, warning=F, eval=F}
 #read donation data
 #main presidential pac-https://www.fec.gov/data/
 df <- read_csv(don_filepath)
@@ -51,24 +49,21 @@ df <- df %>%
   select(contributor_zip, contribution_receipt_amount, date, contributor_name)
 ```
 
-<div style="margin-bottom:20px;">
-
-## Data and Prep
+# Data and Prep
 Donations data was downloaded from a [database](https://www.fec.gov/data/) run by the Federal Election Commission, which houses all campaign finance data for public use and consumption. Data were downloaded from 01/01/2019-09/31/2019, the most recent data available in the FEC database. Contributions to "Donald J. Trump for President, INC.", "Trump Make America Great Again Committee", and "Trump Victory" PACs were exported and bound together.
 
-These data are at the individual-level and also contain each donors zip code. In order to link donors to the voting history of their community, I joined zip codes with voter precincts and their results from 2016 presidential election. However, this linkage required careful management since often the boundaries of one zip code may overlap with multiple voting precincts or vice versa. In the instance that a zip code contained multiple voting precincts which all voted for the same candidate in 2016, that zip code was included in the final dataset. In the instance that a zip code contained voting precincts where the most popular candidate differed, those zip codes were dropped from the final dataset. There were 5,595 zip codes (of 33,664) containing 2+ voter precincts; 30% (1655/5595) of which contained precincts with conflicting candidate preferences and were excluded from the analysis. Other data quirks included negative contribution amounts in 1.4% of the data. These data were excluded in a sensitivity analysis and qualitatively similar results were observed. For time-series figures, data were tabulated to donation totals by month, stratified by 2016 candidate preference for the collective U.S. and individual swing states.
-</div>
-```{r, echo=F, message=F, warning=F, eval=F}
+These data are at the individual-level and also contain each donors zip code. In order to link donors to the voting history of their community, I joined zip codes with voter precincts and their results from 2016 presidential election. However, this linkage required careful management since often the boundaries of one zip code may overlap with multiple voting precincts or vice versa. In the instance that a zip code contained multiple voting precincts which all voted for the same candidate in 2016, that zip code was included in the final dataset. In the instance that a zip code contained voting precincts where the most popular candidate differed, those zip codes were dropped from the final dataset. 
+
+There were 5,595 zip codes (of 33,664) containing 2+ voter precincts; 30% (1655/5595) of which contained precincts with conflicting candidate preferences and were excluded from the analysis. Other data quirks included negative contribution amounts in 1.4% of the data. These data were excluded in a sensitivity analysis and qualitatively similar results were observed. For time-series figures, data were tabulated to donation totals by month, stratified by 2016 candidate preference for the collective U.S. and individual swing states.
+
+```{r, message=F, warning=F, eval=F}
 # Steps of data prep:
 # 1. Read in voting history by congressional district
 # 2. Read in file that links zip code to congressional district (roughly-there are some errors in this, one example is districts AL-06 and AL-07 belong to the same zip code, 35005, but have extremely different political leanings. And conversely, multiple congressional districts can belong to one zip code so it gets a bit messy)
-# 3.
+# 3. 
 #read in party leaning data by congressional district
 df_vot <- read_csv(vot_filepath) %>%
   mutate_at(vars(contains("%")), as.double)
-
-#read in party leaning by precinct-https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D
-#load(vot_filepath2)
 
 #read zip code to congressional district data
 df_zip <- read_csv(zip_filepath) %>% #https://www.census.gov/geographies/reference-files/2010/geo/relationship-files.html
@@ -84,10 +79,7 @@ df_zip <- read_csv(zip_filepath) %>% #https://www.census.gov/geographies/referen
 #good article describing issues w linking zip and cong district-https://www.azavea.com/blog/2017/07/26/accuracy-zip-district-matching/
 #merge together zip codes with the congressional district voting record
 df_vot_zip <- right_join(df_vot, df_zip, by=c("Dist"="state_dist"))
-```
 
-
-```{r, echo=F, message=F, warning=F, eval=F}
 #address the duplicate zip codes before joining with contribution data
 #there are multiple districts in one zip code. These zip codes tend to 
 #be blue so when I joined the contributions data and the voter history on zip
@@ -109,15 +101,10 @@ df_vot_zip <- df_vot_zip %>%
   #keep the first row for each unique zip code since remaining zip codes 
   #w/ 2+ districts all support same party
   distinct(ZCTA, .keep_all = T)
-```
 
-
-```{r, echo=F, message=F, warning=F, eval=F}
 #merge voting records with donations by zip code
 df1 <- left_join(df, df_vot_zip, by=c("contributor_zip"="ZCTA"))
-```
 
-```{r, echo=F, eval=F}
 #read in population to generate per capita cost - https://data.world/lukewhyte/us-population-by-zip-code-2010-2016
 df_pop <- read_csv(pop_filepath) %>%
   select(zip_code, pop=`y-2016`)
@@ -128,22 +115,25 @@ df1 <- left_join(df1, df_pop, by=c("contributor_zip"="zip_code")) %>%
          week =as.Date(paste0(substr(date, 1,4), "-", week(date), "-", 1),
                                      format="%Y-%U-%u"),
          trump_value=`Trump %` - `Clinton %`)
+```
 
+
+```{r, eval=F, echo=F}
 #write the files for faster rendering later
 write_csv(df1, paste0(out_dir, "df1.csv"))
 write_csv(df_zip, paste0(out_dir, "df_zip.csv"))
 ```
 
-<div style="margin-bottom:100px;">
-
-## Results
-During this time there were XX total contributions, totaling $XXXX. As shown below, the majority of these donations came in during July-September months. Average size of donation, a proxy for strength of support, _________ over the course of 2016. Weekly donation totals were fairly steady from January-June, with zip codes that Trump won with the popular vote consistently outspending zip codes that Clinton won. Donation campaigns in June and July kicked off a significant surge in incoming money to Trump's PACs Impeachment inquiry began in ____, as we see an uptick in donation support.
-</div>
-```{r, echo=F, message=F, warning=F}
+```{r, message=F, warning=F, echo=F}
 #read in files
 df1 <- read_csv(paste0(out_dir, "df1.csv"))
 df_zip <- read_csv(paste0(out_dir, "df_zip.csv"))
+```
 
+# Results
+During this time there were `r nrow(df1)` total contributions, totaling $`r round(sum(df1$contribution_receipt_amount)/1e6, 2)` million. As shown below, the major upswing began in July and continued through September. Average size of donation, a proxy for strength of support, $`r round(sum(df1$contribution_receipt_amount)/nrow(df1), 1)` over the course of 2019. Weekly donation totals were fairly steady from January-June, with zip codes that Trump won with the popular vote consistently outspending zip codes that Clinton won. Donation campaigns in June and July kicked off a significant surge in money to Trump's PACs. Nancy Pelosi annouced a formal impeachment inquiry on September 24, which coincides with a massive surge in donations throughout the country.
+
+```{r, message=F, warning=F}
 #force R to not use exponential notations
 options("scipen"=100, "digits"=4)
 
@@ -158,7 +148,7 @@ df1 %>%
             total_uni_cons=length(unique(contributor_name))) %>%
   ggplot() +
   geom_line(aes(week, total_dollars, color=Party)) +
-  scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
+  scale_color_manual(values = party_colors, guide=guide_legend("2016 winner districts")) +
   #geom_text(aes(month, total_dollars, label=total_uni_cons)) +
   geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
   geom_text(aes(x=as.Date("2019-06-11"), label="Trump's birthday", y=2.3), 
@@ -173,9 +163,166 @@ df1 %>%
   theme_bw()
 ```
 
-<div style="margin-bottom:100px;">
-</div>
-```{r, echo=F, message=F, warning=F}
+
+```{r facet wrap on state, message=F, warning=F}
+#facet wrap the plot on specific states
+states_ab <- c("WI", "MI", "PA", "AZ", "NC", "FL")
+plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
+  #find zip codes for that state
+  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
+  
+  #build plot
+  df_plot %>%
+    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
+           state=substr(Dist, 0, 2)) %>%
+    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
+    group_by(week, Party, state) %>%
+    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T)/1000) %>%
+    ggplot() +
+    geom_line(aes(week, total_dollars, color=Party)) +
+    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
+    facet_wrap(~state) +
+    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
+    labs(x="Date", y="Weekly Donations (USD in thousands)") +
+    theme_bw()
+}
+
+#plot
+plotStatesFacet(states = states_ab)
+```
+
+
+
+The gray vertical lines are defined as follows: 1st-Trump's birthday, 2nd-Whistleblower complaint becomes public, 3rd-Pelosi announce formal impeachment inquiry.
+
+Are more people donating or are those that have been donating simply donating more? Plotting time series of the average donation and average number of unique donors per week helps answer this question. Visualizing the average donation amount per week will also allow us to truly compare the states to each other as the absolute values in the previous figures often conflate population with donation size.
+
+<br>
+```{r facet wrap on state for number unique voters, message=F, warning=F}
+#facet wrap the plot on specific states
+states_ab <- c("WI", "MI", "PA", "AZ", "NC", "FL")
+plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
+  #find zip codes for that state
+  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
+  
+  #build plot
+  df_plot %>%
+    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
+           state=substr(Dist, 0, 2)) %>%
+    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
+    group_by(week, Party, state) %>%
+    summarise(total_cons=n(),
+              total_uni_cons=length(unique(contributor_name))) %>%
+    ggplot(aes(week, total_uni_cons, color=Party)) +
+    geom_line() +
+    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
+    facet_wrap(~state) +
+    #geom_text(aes(month, total_dollars, label=total_uni_cons)) +
+    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
+    labs(x="Date", y="Unique Donors per Week") +
+    theme_bw()
+}
+
+#plot
+plotStatesFacet(states = states_ab)
+```
+
+The gray vertical lines are defined as follows: 1st-Trump's birthday, 2nd-Whistleblower complaint becomes public, 3rd-Pelosi announce formal impeachment inquiry.
+
+<br>
+
+```{r facet wrap on state for average donation amount, message=F, warning=F}
+#facet wrap the plot on specific states
+states_ab <- c("WI", "MI", "PA", "AZ", "NC", "FL")
+plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
+  #find zip codes for that state
+  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
+  
+  #build plot
+  df_plot %>%
+    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
+           state=substr(Dist, 0, 2)) %>%
+    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
+    group_by(week, Party, state) %>%
+    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
+              total_cons=n(),
+              avg_donation=total_dollars/total_cons) %>%
+    ggplot() +
+    geom_line(aes(week, avg_donation, color=Party)) +
+    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
+    facet_wrap(~state) +
+    #geom_text(aes(month, total_dollars, label=total_uni_cons)) +
+    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
+    labs(x="Date", y="Average donation by week ($)") +
+    theme_bw()
+}
+
+#plot
+plotStatesFacet(states = states_ab)
+```
+
+
+```{r facet wrap on state for per cap donation, message=F, warning=F, eval=F, echo=F}
+#facet wrap the plot on specific states
+states_ab <- c("WI", "MI", "PA", "AZ", "NC")
+plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
+  #find zip codes for that state
+  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
+  
+  #duplicate data to collapse at national level
+  #df <- bind_rows(
+  df_nat <- df_plot %>%
+    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"), state="NAT") %>%
+    filter(!is.na(Party)) %>%
+    group_by(week, Party, state) %>%
+    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
+              total_pop=sum(pop, na.rm = T),
+              dollars_percap=total_dollars/total_pop)
+    
+  df_st <- df_plot %>%
+    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
+           state=substr(Dist, 0, 2)) %>%
+    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
+    group_by(week, Party, state) %>%
+    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T)/1000) %>%
+    
+  #build plot
+  df_plot %>%
+    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
+           state=substr(Dist, 0, 2)) %>%
+    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
+    group_by(week, Party, state) %>%
+    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
+              total_pop=sum(pop, na.rm = T),
+              dollars_percap=total_dollars/total_pop) %>%
+    ggplot() +
+    geom_line(aes(week, dollars_percap, color=Party)) +
+    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
+    facet_wrap(~state) +
+    #geom_text(aes(month, total_dollars, label=total_uni_cons)) +
+    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
+    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
+    labs(x="Date", y="Weekly donations per cap ($)") +
+    theme_bw()
+}
+
+#plot
+plotStatesFacet(states = states_ab)
+```
+
+# Summary
+The story told by these campaign donation data are that campaign contributions to Trump's PACs are increasing. The relationship between the increase in donations and impeachment process is less clear, however this analysis does suggest that impeachment may be driving more Americans to donate and write larger checks.
+
+
+```{r, echo=F, message=F, warning=F, eval=F}
+#####SCRAP###################################
 #loop through these swing states using map function
 states <- c("WI", "MI", "PA", "FL", "AZ", "NC")
 zips_list <- map(states, zipsBystate, df=df_zip)
@@ -211,107 +358,5 @@ plots_list <- map(states, function(st, df_plot=df1, df_zip_fun=df_zip){
     theme_bw()
   }
 )
-```
-
-
-```{r facet wrap on state, echo=F, message=F, warning=F}
-#facet wrap the plot on specific states
-states_ab <- c("WI", "MI", "PA", "AZ", "NC", "FL")
-plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
-  #find zip codes for that state
-  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
-  
-  #build plot
-  df_plot %>%
-    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
-           state=substr(Dist, 0, 2)) %>%
-    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
-    group_by(week, Party, state) %>%
-    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T)/1000) %>%
-    ggplot() +
-    geom_line(aes(week, total_dollars, color=Party)) +
-    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
-    facet_wrap(~state) +
-    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
-    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
-    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
-    labs(x="Date", y="Weekly Donations (USD in thousands)") +
-    theme_bw()
-}
-
-#plot
-plotStatesFacet(states = states_ab)
-```
-
-<br><br><br><br>
-<pre width="30">
-The gray vertical lines are defined as follows: 1st-Trump's birthday, 2nd-Whistleblower complaint becomes public, 3rd-Pelosi announce formal impeachment inquiry.
-</pre>
-
-Are more people donating or are those that have been donating simply donating more? Plotting time series of the average donation and average number of unique donors per week helps answer this question. Visualizing the average donation amount per week will also allow us to truly compare the states to each other as the absolute values in the previous figures often conflate population with donation size.
-
-<br><br><br><br>
-
-```{r facet wrap on state for number unique voters, echo=F, message=F, warning=F, fig.cap="The gray vertical lines are defined as follows: 1st-Trump's birthday, 2nd-Whistleblower complaint becomes public, 3rd-Pelosi announce formal impeachment inquiry."}
-#facet wrap the plot on specific states
-states_ab <- c("WI", "MI", "PA", "AZ", "NC", "FL")
-plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
-  #find zip codes for that state
-  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
-  
-  #build plot
-  df_plot %>%
-    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
-           state=substr(Dist, 0, 2)) %>%
-    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
-    group_by(week, Party, state) %>%
-    summarise(total_cons=n(),
-              total_uni_cons=length(unique(contributor_name))) %>%
-    ggplot(aes(week, total_uni_cons, color=Party)) +
-    geom_line() +
-    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
-    facet_wrap(~state) +
-    #geom_text(aes(month, total_dollars, label=total_uni_cons)) +
-    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
-    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
-    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
-    labs(x="Date", y="Unique Donors per Week") +
-    theme_bw()
-}
-
-#plot
-plotStatesFacet(states = states_ab)
-```
-<br><br><br><br>
-
-```{r facet wrap on state for average donation amount, message=F, warning=F}
-#facet wrap the plot on specific states
-states_ab <- c("WI", "MI", "PA", "AZ", "NC", "FL")
-plotStatesFacet <- function(states, df_plot=df1, df_zip_fun=df_zip){
-  #find zip codes for that state
-  all_zips <- unlist(map(states, zipsBystate, df=df_zip_fun))
-  
-  #build plot
-  df_plot %>%
-    mutate(Party=case_when(trump_value>0 ~ "Trump", trump_value<0 ~ "Clinton"),
-           state=substr(Dist, 0, 2)) %>%
-    filter(!is.na(Party) & contributor_zip %in% all_zips) %>%
-    group_by(week, Party, state) %>%
-    summarise(total_dollars=sum(contribution_receipt_amount, na.rm = T),
-              total_cons=n(),
-              avg_donation=total_dollars/total_cons) %>%
-    ggplot() +
-    geom_line(aes(week, avg_donation, color=Party)) +
-    scale_color_manual(values = party_colors, guide=guide_legend("2016 winner")) +
-    facet_wrap(~state) +
-    #geom_text(aes(month, total_dollars, label=total_uni_cons)) +
-    geom_vline(xintercept = as.Date("2019-06-14"), col="grey") +
-    geom_vline(xintercept = as.Date("2019-08-12"), col="grey") +
-    geom_vline(xintercept = as.Date("2019-09-24"), col="grey") +
-    labs(x="Date", y="Average donation by week ($)") +
-    theme_bw()
-}
-
-#plot
-plotStatesFacet(states = states_ab)
+###########################################
 ```

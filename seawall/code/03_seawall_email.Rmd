@@ -13,12 +13,12 @@ output: pdf_document
 library(tidyverse); library(openxlsx); library(sf); library(biscale); library(cowplot); library(gridGraphics)
 
 #filepaths and filenames
-cost_datapath <- paste0(here::here(),"/seawall/data/Climate_Costs_2040_Data/Con Dist Cost Summary.xlsx")
-dist_datapath <- paste0(here::here(),"/seawall/data/Climate_Costs_2040_Data/Con Dist Length Summary.xlsx")
-shape_filepath <- paste0(here::here(),"/google_ads/data/districtShapes/districts114.shp")
-demo_filepath <- paste0(here::here(),"/seawall/data/demographics/ACS_17_5YR_DP03_with_ann.csv")
-pop_filepath <- paste0(here::here(),"/seawall/data/population/ACS_17_5YR_DP05_with_ann.csv")
-out_dir <- paste0(here::here(),"/seawall/output/")
+cost_datapath   <- paste0(here::here(),"/seawall/data/Climate_Costs_2040_Data/Con Dist Cost Summary.xlsx")
+dist_datapath   <- paste0(here::here(),"/seawall/data/Climate_Costs_2040_Data/Con Dist Length Summary.xlsx")
+shape_filepath  <- paste0(here::here(),"/google_ads/data/districtShapes/districts114.shp")
+demo_filepath   <- paste0(here::here(),"/seawall/data/demographics/ACS_17_5YR_DP03_with_ann.csv")
+pop_filepath    <- paste0(here::here(),"/seawall/data/population/ACS_17_5YR_DP05_with_ann.csv")
+out_dir         <- paste0(here::here(),"/seawall/output/")
 
 ##########
 #Wrangle the cost data
@@ -127,7 +127,7 @@ shape_data %>%
   mutate(value=value/10^6) %>%
   filter(!is.na(value_percap_cat)) %>%
   ggplot() + 
-    geom_sf(aes(fill=value_percap_cat)) +
+    geom_sf(aes(color=value_dist, fill=value_percap_cat)) +
     #scale_fill_viridis_c(name="USD per capita") +
     ggtitle("US Seawall cost per capita-2040 with 1 year surge") +
     scale_fill_manual(values=c("#f6eff7", "#bdc9e1", "#67a9cf", "#1c9099", "#016c59"), name="USD") +
