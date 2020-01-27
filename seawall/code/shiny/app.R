@@ -7,13 +7,23 @@ library(plotly)
 # read clean data
 #setwd("seawall/code/shiny/")
 df <- read_csv("app_data.csv")
+xvars <- c("Poverty", "Unemployed_LF", "Not_in_LF", "Transportation", "Construction",
+           "Agriculture_fishing", "Construction_all", "Manufacturing_all", 
+           "Median_HH_income", "Health_insurance_cov", "Health_insurance_priv")
+
 
 #user interface
 ui <- 
   pageWithSidebar(
     headerPanel(paste0("The Tide is High")),
     sidebarPanel(
-      selectInput(inputId = "xvarInput", label = "Variable", choices = c("HC03_VC131", "HC03_VC132"))
+      selectInput(inputId = "xvarInput", 
+                  label = "Variable", 
+                  choices = xvars),
+      checkboxGroupInput(inputId = "smoother", 
+                         label = "Smoother", 
+                         choices = c("loess", "lm", "glm"), 
+                         selected = "loess")
     ),
     mainPanel(
       plotOutput("scatter") #output placeholder 1
@@ -29,9 +39,11 @@ server <- function(input, output) {
   ##generate time series plot
   output$scatter <- renderPlot({
     #filter to appropriate data
-    p <- ggplot(df, aes(HC03_VC131, seawall_cost_percap)) +
+    p <- ggplot(df, aes_string(input$xvarInput, "seawall_cost_percap")) +
       geom_point(aes(color=Region, text=paste0("State: ", state))) +
       geom_smooth(method = "lm", color="black", se=F) +
+      geom_smooth(se=F) +
+      ylab("Seawall Cost per capita") +
       theme_bw()
     p
     #print(ggplotly(p))

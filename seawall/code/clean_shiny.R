@@ -1,5 +1,5 @@
 #clean and process data for Shiny App
-library(tidyverse); library(lubridate); library(openxlsx)
+library(tidyverse); library(lubridate); library(openxlsx); library(data.table)
 
 #filepaths and filenames
 dir <- here::here()
@@ -20,7 +20,8 @@ pop_filepath    <- paste0(dir,"/seawall/data/population/ACS_17_5YR_DP05_with_ann
 # HC01_VC85 = Estimate; INCOME AND BENEFITS (IN 2017 INFLATION-ADJUSTED DOLLARS) - Total households - Median household income (dollars)
 # HC03_VC131= Percent; HEALTH INSURANCE COVERAGE - Civilian noninstitutionalized population - With health insurance coverage
 # HC03_VC132= Percent; HEALTH INSURANCE COVERAGE - Civilian noninstitutionalized population - With health insurance coverage - With private health insurance
-
+codes <- c("HC03_VC161", "HC03_VC07", "HC03_VC09", "HC03_VC45", "HC03_VC44", "HC03_VC50", "HC03_VC51", "HC03_VC52", "HC01_VC85", "HC03_VC131", "HC03_VC132")
+titles <- c("Poverty", "Unemployed_LF", "Not_in_LF", "Transportation", "Construction", "Agriculture_fishing", "Construction_all", "Manufacturing_all", "Median_HH_income", "Health_insurance_cov", "Health_insurance_priv")
 
 #####################################################
 #data prep###########################################
@@ -91,6 +92,9 @@ df_app <- left_join(df_app, df_pop, by=c("district", "state")) %>%
                               labels = c("0-350", "350-1,500", "1,500-4,000", "4,000-10,000", "10,000+"))) %>%
   filter(!is.na(seawall_cost_percap))
 #####
+
+#not sure how to change column names as vectors
+df_app <- setnames(as.data.table(df_app), codes, titles)
 
 # save for app use
 write_csv(df_app, paste0(dir, "/seawall/code/shiny/app_data.csv"))
