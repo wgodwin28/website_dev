@@ -20,10 +20,21 @@ ui <-
       selectInput(inputId = "xvarInput", 
                   label = "Variable", 
                   choices = xvars),
-      checkboxGroupInput(inputId = "smoother", 
-                         label = "Smoother", 
-                         choices = c("loess", "lm", "glm"), 
-                         selected = "loess")
+      radioButtons(inputId = "smootherInput",
+                   label = "Smoother",
+                   choices = c("loess", "lm", "glm", "gam"),
+                   selected = "loess"),
+      checkboxInput(inputId = "seInput",
+                    label = "Show function uncertainty?",
+                    value = T),
+      radioButtons(inputId = "transInput",
+                   label = "Transformation-seawall costs",
+                   choices = c("identity", "log10", "sqrt", "log", "exp"),
+                   selected = "identity"),
+      textInput(inputId = "custfuncInput",
+                label = "Custom Function",
+                value = "y ~ x"),
+      helpText("e.g. add a spline basis to gam function by denoting 'y ~ s(x)'")
     ),
     mainPanel(
       plotOutput("scatter") #output placeholder 1
@@ -35,14 +46,21 @@ server <- function(input, output) {
   #generate data that is reactive to app inputs
   #filtered <- reactive({
   #})
-  
   ##generate time series plot
   output$scatter <- renderPlot({
+    
+    #set up reactive elements
+    transIn <- input$transInput
+    smoother <- input$smootherInput
+    customFun <- input$custfuncInput
+      
     #filter to appropriate data
     p <- ggplot(df, aes_string(input$xvarInput, "seawall_cost_percap")) +
       geom_point(aes(color=Region, text=paste0("State: ", state))) +
-      geom_smooth(method = "lm", color="black", se=F) +
-      geom_smooth(se=F) +
+      scale_y_continuous(trans = transIn) +
+      #geom_smooth(method = c("lm", "loess"), color="black", se=F) +
+      #geom_smooth(se=F) +
+      stat_smooth(method = smoother, formula = as.formula(customFun), size = 1, se=input$seInput) +
       ylab("Seawall Cost per capita") +
       theme_bw()
     p
