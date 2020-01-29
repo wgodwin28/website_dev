@@ -29,7 +29,7 @@ ui <-
                     value = T),
       radioButtons(inputId = "transInput",
                    label = "Transformation-seawall costs",
-                   choices = c("identity", "log10", "sqrt", "log", "exp"),
+                   choices = c("identity", "log10", "sqrt", "exp"),
                    selected = "identity"),
       textInput(inputId = "custfuncInput",
                 label = "Custom Function",
@@ -37,36 +37,60 @@ ui <-
       helpText("e.g. add a spline basis to gam function by denoting 'y ~ s(x)'")
     ),
     mainPanel(
-      plotOutput("scatter") #output placeholder 1
+      fillPage(
+        plotOutput("scatter"), #output placeholder 1
+        #br(), br(),
+        fillRow(plotOutput("histYvar"),
+                plotOutput("histXvar"))
+      )
     )
   )
+  
 
 #back-end server
-server <- function(input, output) {
-  #generate data that is reactive to app inputs
-  #filtered <- reactive({
-  #})
-  ##generate time series plot
-  output$scatter <- renderPlot({
-    
-    #set up reactive elements
-    transIn <- input$transInput
-    smoother <- input$smootherInput
-    customFun <- input$custfuncInput
+server <- 
+  function(input, output) {
+    #generate data that is reactive to app inputs
+    #filtered <- reactive({
+    #})
+    ##generate time series plot
+    output$scatter <- renderPlot({
       
-    #filter to appropriate data
-    p <- ggplot(df, aes_string(input$xvarInput, "seawall_cost_percap")) +
-      geom_point(aes(color=Region, text=paste0("State: ", state))) +
-      scale_y_continuous(trans = transIn) +
-      #geom_smooth(method = c("lm", "loess"), color="black", se=F) +
-      #geom_smooth(se=F) +
-      stat_smooth(method = smoother, formula = as.formula(customFun), size = 1, se=input$seInput) +
-      ylab("Seawall Cost per capita") +
-      theme_bw()
-    p
-    #print(ggplotly(p))
-  })
-}
+      #set up reactive elements
+      transIn <- input$transInput
+      smoother <- input$smootherInput
+      customFun <- input$custfuncInput
+        
+      #filter to appropriate data
+      p <- ggplot(df, aes_string(input$xvarInput, "seawall_cost")) +
+        geom_point(aes(color=Region, text=paste0("State: ", state))) +
+        scale_y_continuous(trans = transIn) +
+        #geom_smooth(method = c("lm", "loess"), color="black", se=F) +
+        #geom_smooth(se=F) +
+        stat_smooth(method = smoother, formula = as.formula(customFun), size = 1, se=input$seInput) +
+        ylab("Seawall Cost per capita") +
+        theme_bw()
+      p
+      #print(ggplotly(p))
+    })
+    
+    ##generate histogram of x variable
+    output$histXvar <- renderPlot({
+      g <- ggplot(df, aes_string(input$xvarInput)) +
+        geom_histogram() +
+        theme_bw()
+      g
+    })
+    
+    ##generate histogram of y variable
+    output$histYvar <- renderPlot({
+      g <- ggplot(df, aes_string("seawall_cost")) +
+        xlab("Seawall Cost") +
+        geom_histogram() +
+        theme_bw()
+      g
+    })
+  }
 shinyApp(ui = ui, server = server)
 # 
 # 
