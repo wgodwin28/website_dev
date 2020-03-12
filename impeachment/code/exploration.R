@@ -2,8 +2,8 @@
 library(data.table); library(tidyverse); library(rgdal); library(sf); library(viridis)
 
 #set directories
-in_dir <- paste0("~/Desktop/impeachment/data/")
-out_dir <- paste0("~/Desktop/impeachment/output/")
+in_dir <- paste0(here::here(), "/impeachment/data/")
+out_dir <- paste0(here::here(), "/impeachment/output/")
 
 # read in contribution data
 #main presidential pac-https://www.fec.gov/data/
@@ -22,7 +22,7 @@ df_zip <- df %>%
 
 # Import US zipcode data
 #https://www.arcgis.com/home/item.html?id=8d2012a2016e484dafaac0451f9aea24
-us_zips <- readOGR(dsn = "~/Desktop/impeachment/data/v10/zip_poly.gdb")
+us_zips <- readOGR(dsn = paste0(here::here(), "/impeachment/data/v10/zip_poly.gdb"))
 us_zips <- st_as_sf(us_zips)
 states <- c("GA", "AL", "MS", "LA", "TX")
 

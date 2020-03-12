@@ -21,7 +21,7 @@ library(scales); library(lubridate); library(kableExtra)
 
 ```{r setup, include=F}
 #read in data
-dt <- fread("~/Desktop/google_ads/data/google-political-ads-creative-stats.csv")
+dt <- fread(paste0(here::here(), "/google_ads/data/google-political-ads-creative-stats.csv"))
 #glimpse(dt)
 
 #relevant variables

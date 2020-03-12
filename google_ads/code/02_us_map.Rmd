@@ -23,7 +23,7 @@ library(scales); library(lubridate); library(kableExtra); library(sf); library(r
 #shape <- st_read("~/Desktop/google_ads/data/gadm36_USA_shp/gadm36_USA_1.shp")
 #shape <- st_crop(shape, xmin= -124.7328, ymin= 24.95638, xmax= -66.96927, ymax= 49.37173)
 #shape <- readOGR("~/Desktop/google_ads/data/gadm36_USA_shp/gadm36_USA_1.shp")
-shape <- st_read("~/Desktop/google_ads/data/states_21basic/states.shp")
+shape <- st_read(paste0(here::here(), "/google_ads/data/states_21basic/states.shp"))
 s_pop <- as.data.table(shape)[,.(STATE_NAME, STATE_ABBR)]
 #from here: https://www.arcgis.com/home/item.html?id=f7f805eb65eb4ab787a0a3e1116ca7e5
 
@@ -40,7 +40,7 @@ shape <- shape %>%
   select(state_var, STATE_NAME)
 
 #read in data
-dt <- fread("~/Desktop/google_ads/data/google-political-ads-geo-spend.csv")
+dt <- fread(paste0(here::here(), "/google_ads/data/google-political-ads-geo-spend.csv"))
 
 #sum spending over state
 dt <- dt %>%
@@ -72,7 +72,7 @@ However, this trend could be entertwined with population. In order to get a pers
 ```{r}
 #read in 2018 population data
 #dowloaded here: https://www2.census.gov/programs-surveys/popest/datasets/2010-2018/state/asrh/
-pop <- fread("~/Desktop/google_ads/data/us_pop.csv")[,.(NAME, POPESTIMATE2018, POPEST18PLUS2018)]
+pop <- fread(paste0(here::here(), "/google_ads/data/us_pop.csv"))[,.(NAME, POPESTIMATE2018, POPEST18PLUS2018)]
 shape.data <- left_join(shape.data, pop, by=c("STATE_NAME"="NAME"))
 
 #calculate pop-weighted spending

@@ -16,7 +16,7 @@ output: html_document
 library(RSQLite); library(tidyverse); library(neuralnet); library(purrr)
 
 # read in data
-db <- dbConnect(SQLite(), dbname="~/Desktop/fires/data/FPA_FOD_20170508.sqlite")
+db <- dbConnect(SQLite(), dbname=paste0(here::here(), "/fires/data/FPA_FOD_20170508.sqlite"))
 dbListTables(db)
 fires <- dbGetQuery(db, "SELECT * FROM Fires")
 ```

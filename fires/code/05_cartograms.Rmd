@@ -11,11 +11,11 @@ library(RSQLite); library(raster); library(tidyverse); library(tweenr); library(
 library(viridis); library(lubridate); library(cartogram); library(gganimate); library(maptools)
 
 #Read in wildfire data-it's in SQLite format so we'll query the local db
-db <- dbConnect(SQLite(), dbname="~/Desktop/fires/data/FPA_FOD_20170508.sqlite")
+db <- dbConnect(SQLite(), dbname=paste0(here::here(), "/fires/data/FPA_FOD_20170508.sqlite"))
 fires <- dbGetQuery(db, "SELECT * FROM Fires")
 
 #read in shapefile of US states
-shape <- shapefile("~/Desktop/fires/data/states_21basic/states.shp")
+shape <- shapefile(paste0(here::here(), "/fires/data/states_21basic/states.shp"))
 
 #calculate yearly total fires for each state
 fires_state <- fires %>%

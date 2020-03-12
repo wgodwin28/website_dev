@@ -19,7 +19,7 @@ library(RSQLite); library(tidyverse); library(sf); library(leaflet); library(vir
 library(lubridate); library(forecast); library(zoo); library(gridExtra)
 
 #Read in wildfire data-it's in SQLite format so we'll query the local db
-db <- dbConnect(SQLite(), dbname="~/Desktop/fires/data/FPA_FOD_20170508.sqlite")
+db <- dbConnect(SQLite(), dbname=paste0(here::here(),"/fires/data/FPA_FOD_20170508.sqlite"))
 fires <- dbGetQuery(db, "SELECT * FROM Fires")
 fires <- fires %>% filter(FIRE_YEAR>2005)
 ```
