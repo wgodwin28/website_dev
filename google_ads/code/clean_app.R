@@ -3,7 +3,6 @@ library(tidyverse); library(data.table); library(lubridate)
 
 #find date when data was downloaded last
 data_dir <- "google_ads/data/"
-#if(interactive()) data_dir <- "google_ads/data/"
 dwnld_date <- file.info(paste0(data_dir, "google-political-ads-transparency-bundle/google-political-ads-advertiser-weekly-spend.csv"))$mtime %>% as.Date()
 dwnld_month <- lubridate::month(dwnld_date, label = T, abbr=F)
 

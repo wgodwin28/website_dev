@@ -84,7 +84,11 @@ ui <- fluidPage(
      selectInput(inputId = "price_catInput",
                  label = "Price Category (USD)",
                  choices = c("0-100", "100-1k", "1k-50k", "50k-100k", "100k +")
-     ), 
+     ),
+     dateRangeInput(inputId = "dateInput",
+                    label = "Date Range",
+                    start = "2018-05-15",
+                    end = Sys.Date()),
      checkboxInput(inputId = "transInput",
                    label = "Plot Y-axis on square root scale",
                    value = F), 
@@ -114,7 +118,9 @@ server <- function(input, output) {
              Party %in% input$partyInput,
              Ad_Type %in% input$ad_typeInput,
              Num_of_Days >= input$daysInput[1],
-             Num_of_Days <= input$daysInput[2]) %>% 
+             Num_of_Days <= input$daysInput[2],
+             as.Date(week_start) >= input$dateInput[1],
+             as.Date(week_start) <= input$dateInput[2]) %>% 
       group_by(Party = factor(Party, levels = c("Democrat", "Republican", "Undetermined")),
                date = as.Date(week_start),
                Impressions = factor(Impressions,
@@ -129,29 +135,38 @@ server <- function(input, output) {
     trans <- ifelse(input$transInput, "sqrt", "identity")
     
     #plot
-    ggplot(filtered,
+    g <- ggplot(filtered,
            aes(date, weekly_ad_count, color = Party, size = Impressions)) +
       geom_point(alpha = 0.4) +
       xlab("Ad Start Date") +
       ylab("Weekly Ad Total") +
       ylim(y.min, y.max) +
       scale_color_manual(values = c("blue", "red", "green")) +
-      geom_vline(xintercept = as.Date("2018/11/06"), linetype = 4) +
-      annotate("text",
-               x = as.Date("2018/10/31"),
-               y = (0.9 * y.max),
-               label = "Midterm",
-               colour = "black",
-               angle = 90,
-               text = element_text(size = 11)) +
+      xlim(input$dateInput[1], input$dateInput[2]) +
       scale_y_continuous(breaks = pretty_breaks(),
                          limits = c(y.min, y.max),
                          trans = trans) +
       scale_x_date(labels = date_format("%b - %Y"), breaks = date_breaks("1 month")) +
       ggtitle("Total Advertisements by Week") +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    # add vertical line of midterm label if date range is before midterm
+    if(input$dateInput[1] < as.Date("2018-11-06")){
+      g <- g +
+        geom_vline(xintercept = as.Date("2018-11-06"), linetype = 4) +
+        annotate("text",
+                 x = as.Date("2018/10/31"),
+                 y = (0.9 * y.max),
+                 label = "Midterm",
+                 colour = "black",
+                 angle = 90,
+                 text = element_text(size = 11))
+    }
+    
+    # render
+    print(g)
   })
-  
+    
   #generate top ten table
   output$topTen <- renderDataTable({
     table_data <- data %>%
@@ -159,7 +174,9 @@ server <- function(input, output) {
              Party %in% input$partyInput,
              Ad_Type %in% input$ad_typeInput,
              Num_of_Days >= input$daysInput[1],
-             Num_of_Days <= input$daysInput[2]) %>% 
+             Num_of_Days <= input$daysInput[2],
+             as.Date(week_start) >= input$dateInput[1],
+             as.Date(week_start) <= input$dateInput[2]) %>% 
       group_by(Advertiser_Name) %>%
       summarize(total_ads = n()) %>%
       mutate("Percentage" = percent(total_ads / sum(total_ads))) %>%
@@ -172,7 +189,8 @@ server <- function(input, output) {
 
 shinyApp(ui = ui, server = server)
 
-#deployApp(appName = "shiny_google_political_ads", appDir="~/Desktop/website_dev/google_ads/code/shiny/")
+# deployApp(appName = "shiny_google_political_ads", appDir="google_ads/code/shiny/")
+# login to https://www.shinyapps.io to get token and secret and code if requires registration 
 
 # data %>%
 #   filter(pricing_cat == "0-100") %>%
