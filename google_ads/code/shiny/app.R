@@ -190,7 +190,7 @@ server <- function(input, output) {
 shinyApp(ui = ui, server = server)
 
 # deployApp(appName = "shiny_google_political_ads", appDir="google_ads/code/shiny/")
-# login to https://www.shinyapps.io to get token and secret and code if requires registration 
+# login to https://www.shinyapps.io to get token and secret and code if requires registration
 
 # data %>%
 #   filter(pricing_cat == "0-100") %>%

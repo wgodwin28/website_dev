@@ -1,0 +1,656 @@
+---
+title: "NAITRE Interim Analysis"
+author: "Will Godwin & Ben Arnold"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '1'
+---
+
+
+```{r setup, echo=F, message=F, warning=F}
+# clear memory
+rm(list=ls())
+
+# directories
+# You may need to change this start path if you use Box Sync or Windows
+box_dir <- "~/Box/"
+data_dir <- paste0(box_dir, "NAITRE-unmasked-materials/InterimAnalysis-2020-10/data/")
+code_dir <- paste0(box_dir, "NAITRE-unmasked-materials/InterimAnalysis-2020-10/R/")
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+
+# libraries
+library(tidyverse)
+library(table1)
+library(data.table)
+library(epitools)
+library(kableExtra)
+library(scales)
+library(labelled)
+library(growthstandards)
+
+# treatment assignments
+Az <- c("RR", "SS", "TT", "WW")
+Pl <- c("UU", "XX", "YY", "ZZ")
+```
+
+```{r read in clean data, echo=F, message=F} 
+# refer to near the top of weekly report Rmd for context as to how the data was cleaned and saved
+# eligibility
+df_eligibility <- read_csv(paste0(data_dir, "eligibility.csv"))
+
+# baseline
+df_baseline <- read_csv(paste0(data_dir, "baseline.csv"))
+
+# treatment
+df_treatment <- read_csv(paste0(data_dir, "treatment.csv"))
+
+# followup
+df_followup <- read_csv(paste0(data_dir, "followup.csv"))
+
+# treatment letters
+tr_assign <- read_csv(paste0(data_dir, "treatment_letters.csv"))
+
+# metadata regarding follow-up visits necessary to calculate follow-up coverage
+table.followup <- fread(paste0(data_dir, "followup_table.csv"))
+```
+
+```{r join in treatment assignment, echo=F, message=F} 
+# treatment assignment for eligibility
+df_eligibility <- left_join(df_eligibility, tr_assign, by="childID") %>%
+  mutate(TL = case_when(
+    assignment %in% Az ~ "Azithromycin",
+    assignment %in% Pl ~ "Placebo")) %>% 
+  as.data.table()
+
+# treatment assignment for baseline
+df_baseline <- left_join(df_baseline, tr_assign, by="childID") %>%
+  mutate(TL = case_when(
+    assignment %in% Az ~ "Azithromycin",
+    assignment %in% Pl ~ "Placebo")) %>% 
+  as.data.table()
+
+# treatment assignment for treatment form
+df_treatment <- left_join(df_treatment, tr_assign, by="childID") %>%
+  mutate(TL = case_when(
+    assignment %in% Az ~ "Azithromycin",
+    assignment %in% Pl ~ "Placebo")) %>% 
+  as.data.table()
+
+# treatment assignment for followup form
+df_followup <- left_join(df_followup, tr_assign, by="childID") %>%
+  mutate(TL = case_when(
+    assignment %in% Az ~ "Azithromycin",
+    assignment %in% Pl ~ "Placebo")) %>% 
+  as.data.table()
+```
+
+```{r eligibility criteria, echo=F}
+#create screened, eligible, enrolled indicators
+df_eligibility[!duplicated(childID) | is.na(childID), screened := 1]
+df_eligibility[startDate>as.Date("2019-08-23") & #date we expanded CSPSs hierarchy
+                startDate-childBirthdate > 7 &
+                 startDate-childBirthdate < 28 &
+                 feedOrally == 1 &
+                 stay6months == 1 & 
+                 allergyAzalides == 2 &
+                 village != 103 &
+                 (childWeight == 1 | is.na(childWeight)) &
+                 ((district %in% c(1,2,4,5,6,7,8,10) & (inrange(village, 1, 102) | 
+                                                          village==999 | 
+                                                          inrange(village, 104, 250))) |
+                    (district==3 & otherStudy==2 & (inrange(village, 1, 102) | 
+                                                      inrange(village, 104, 250)))) &
+                 (inrange(region, 1, 5) | is.na(region)) &
+                 (inrange(q_2_1_6, 1, 30) | inrange(q_2_1_6, 32, 45)) &
+                 screened == 1,
+               eligible := 1]
+
+# slightly different eligibility criteria since we expanded total CSPSs
+df_eligibility[startDate<=as.Date("2019-08-23") &
+               startDate-childBirthdate > 7 &
+               startDate-childBirthdate < 28 &
+                 feedOrally == 1 &
+                 stay6months == 1 & 
+                 allergyAzalides == 2 &
+                 otherStudy == 2 &
+                 !is.na(village) & village != 103 &
+                 (childWeight == 1 | is.na(childWeight)) &
+                 screened == 1,
+               eligible := 1]
+df_eligibility[eligible == 1 & consent == 1 & !is.na(childID), enrolled := 1]
+df_eligibility[(consent == 2 | (is.na(consent) & eligible == 1) | 
+                 is.na(childID)) & eligible == 1,
+               refused := 1]
+
+```
+
+```{r prep consort, echo=F, message=F, warning=F}
+# screened
+screened <- df_eligibility %>% summarise(sum(screened, na.rm = T)) %>% pull
+
+# total eligible
+eli <- df_eligibility %>% summarise(sum(eligible, na.rm = T)) %>% pull
+
+# ineligible
+ineli <- screened - eli
+
+# total enrolled and randomized
+enrolled <- df_eligibility %>% summarise(sum(enrolled, na.rm = T)) %>% pull
+
+# refused entry to study
+not_enr <- eli - enrolled
+
+# treatment numbers by arm
+az_N <- df_treatment %>% filter(TL=="Azithromycin" & isAdministered==1) %>% distinct(childID) %>% nrow
+pl_N <- df_treatment %>% filter(TL=="Placebo" & isAdministered==1) %>% distinct(childID) %>% nrow
+
+# reached 6-mo timepoint or died
+az_6mo <- df_followup %>% filter(TL=="Azithromycin" & (timepoint %in% c(180, 365) | vitalStatus == 2)) %>%
+  distinct(childID) %>% nrow
+pl_6mo <- df_followup %>% filter(TL=="Placebo" & (timepoint %in% c(180, 365) | vitalStatus == 2)) %>%
+  distinct(childID) %>% nrow
+```
+
+```{r get the lost to follow-up numbers, echo=F}
+# create a copy of follow-up with new name that the script below expects
+dt.followup <- copy(df_followup)
+dt.eligibility <- copy(df_eligibility)
+
+# Important!! Set this date to the date of data cutoff for the analysis. 
+# The follow-up calculate relies on it
+date_cutoff <- "2020-09-28"
+
+# script that loops through each follow-up timepoint (21 day, 3-mo, 6-mo, etc.) and calculates coverage
+source(paste0(code_dir, "calc_followup_by_arm.R"), local = T)
+
+# calculate lost to followup for AZ arm
+az_ltfu <- counts.all %>% 
+  filter(timepoint=="6-month" & TL=="Azithromycin") %>% 
+  summarise(sum(expected) - (sum(actual) + sum(window))) %>% pull
+
+# calculate lost to followup for PL arm
+pl_ltfu <- counts.all %>% 
+  filter(timepoint=="6-month" & TL=="Placebo") %>% 
+  summarise(sum(expected) - (sum(actual) + sum(window))) %>% pull
+```
+
+## CONSORT (Display 1)
+
+```{r render consort diagram, echo=F, message=F, warning=F}
+# make diagram foundation
+data <- tibble(x=1:100, y=1:100)
+p <- data %>% 
+  ggplot(aes(x, y)) +
+  scale_x_continuous(minor_breaks = seq(10, 100, 10)) +
+  scale_y_continuous(minor_breaks = seq(10, 200, 10)) +
+  theme_linedraw()
+
+# size of font
+s <- 2.5
+
+# draw boxes
+#consort <- 
+  p +
+  # top box
+  geom_rect(xmin=36, xmax=64, ymin=92, ymax=100, color='black',
+            fill='white', size=1) +
+  annotate('text', x=50, y=96, label=paste0("Total screened - ", screened), size=s) +
+  
+  # first arrow
+  geom_segment(x=50, xend=50, y=92, yend=81, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+  
+  # second box
+  geom_rect(xmin=36, xmax=64, ymin=72, ymax=80, color='black',
+            fill='white', size=1) +
+  annotate('text', x=50, y=76, label=paste0("Total eligible - ", eli), size=s) +
+  
+  # second arrow
+  geom_segment(x=50, xend=50, y=72, yend=61, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+
+  # Third box
+  geom_rect(xmin=36, xmax=64, ymin=52, ymax=60, color='black',
+            fill='white', size=1) +
+  annotate('text', x=50, y=56, label=paste0("Total enrolled & randomized - ", enrolled), size=s) +
+  
+  # arrow to exclude box1
+  geom_segment(x=50, xend=69, y=86, yend=86, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+    
+  #exclude box1
+  geom_rect(xmin=70, xmax=96, ymin=82, ymax=90, color='black',
+            fill='white', size=1) +
+  annotate('text', x=83, y=86, label=paste0("Total ineligible - ", ineli), size=s) +
+
+  # arrow to exclude box2
+  geom_segment(x=50, xend=69, y=66, yend=66, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+    
+  #exclude box2
+  geom_rect(xmin=70, xmax=96, ymin=62, ymax=70, color='black',
+            fill='white', size=1) +
+  annotate('text', x=83, y=66, label=paste0("Total refused - ", not_enr), size=s) +
+  
+  # first left arrow
+  geom_segment(x=36, xend=19, y=56, yend=56, 
+    size=1, linejoin = "mitre", lineend = "butt") +
+  geom_segment(x=19, xend=19, y=56, yend=53, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+  
+  # First left box
+  geom_rect(xmin=6, xmax=32, ymin=44, ymax=52, color='black',
+            fill='white', size=1) +
+  annotate('text', x=19, y=48, label=paste0("Azithromycin treated - ", az_N), size=s) +
+  
+  # second left arrow
+  geom_segment(x=19, xend=19, y=44, yend=37, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+  
+  # first right arrow
+  geom_segment(x=64, xend=81, y=56, yend=56, 
+    size=1, linejoin = "mitre", lineend = "butt") +
+  geom_segment(x=81, xend=81, y=56, yend=53, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+    
+  # First right box
+  geom_rect(xmin=68, xmax=94, ymin=44, ymax=52, color='black',
+            fill='white', size=1) +
+  annotate('text', x=81, y=48, label=paste0("Placebo treated - ", pl_N), size=s) +
+
+  # second right arrow
+  geom_segment(x=81, xend=81, y=44, yend=37, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+  
+  # Second left box
+  geom_rect(xmin=6, xmax=32, ymin=28, ymax=36, color='black',
+            fill='white', size=1) +
+  annotate('text', x=19, y=32, label=paste0("Azithromycin lost to followup - ", az_ltfu), size=s) +
+  
+  # third left arrow
+  geom_segment(x=19, xend=19, y=28, yend=21, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+    
+  # Second right box
+  geom_rect(xmin=68, xmax=94, ymin=28, ymax=36, color='black',
+            fill='white', size=1) +
+  annotate('text', x=81, y=32, label=paste0("Placebo lost to followup - ", pl_ltfu), size=s) +
+  
+  # third right arrow
+  geom_segment(x=81, xend=81, y=28, yend=21, 
+    size=1, linejoin = "mitre", lineend = "butt",
+    arrow = arrow(length = unit(1, "mm"), type= "closed")) +
+    
+  # third left box
+  geom_rect(xmin=6, xmax=32, ymin=12, ymax=20, color='black',
+            fill='white', size=1) +
+  annotate('text', x=19, y=16, label=paste0("Azithromycin reached 6-mo - ", az_6mo), size=s) +
+  
+  # third right box
+  geom_rect(xmin=68, xmax=94, ymin=12, ymax=20, color='black',
+            fill='white', size=1) +
+  annotate('text', x=81, y=16, label=paste0("Placebo reached 6-mo - ", pl_6mo), size=s) +
+  theme_void()
+```
+
+## Enrollment characteristics (Display 2)
+```{r baseline indicators, echo=F, message=F, warning=F}
+# custom render function for continuous variables - just show MEAN and SD
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=2), c("",
+        "Mean (SD)"=sprintf("%s (%s)", MEAN, SD)))
+}
+
+# calculate the waz, haz, and whz scores using the "growthstandards" package
+df_baseline <- df_baseline %>%
+  mutate(sex=if_else(q_2_1_1==1, "Male", "Female"),
+         ageInDays=as.numeric(difftime(startDate, childBirthdate, units = "days")),
+         haz_zscore=who_value2zscore(ageInDays, length, x_var = "agedays", y_var = "htcm", sex = sex),
+         waz_zscore=who_value2zscore(ageInDays, weight, x_var = "agedays", y_var = "wtkg", sex = sex),
+         whz_zscore=who_value2zscore(length, weight, x_var = "lencm", y_var = "wtkg", sex = sex))
+
+# prepare variable for rendering table
+df_baseline %>%
+  mutate(Female = ifelse(q_2_1_1==2, "Female", "Male"),
+         age_cat = 
+           case_when(
+             ageInDays %in% seq(8, 13) ~ "8-13d",
+             ageInDays %in% seq(14, 20) ~ "14-20d",
+             ageInDays %in% seq(21, 28) ~ "21-28d"
+           ),
+         birthweight = ifelse(q_2_1_2>0, q_2_1_2, NA)) %>%
+  select(Female, ageInDays, age_cat, Birthweight=birthweight, Weight=weight, Height=length,
+         WAZ=waz_zscore, HAZ=haz_zscore, WHZ=whz_zscore, TL) %>%
+  mutate(age_cat = factor(age_cat, levels = c("8-13d", "14-20d", "21-28d"))) %>%
+  set_variable_labels(Female = "Sex", ageInDays = "Age (days)", age_cat = "Age bin",
+                      Birthweight = "Birthweight (grams)", Weight = "Weight (kg)",
+                      Height = "Height (cm)") %>%
+  table1(~ Female + ageInDays + age_cat + Birthweight + Weight + 
+           Height + WAZ + HAZ + WHZ | TL, data = .,
+         render.continuous=my.render.cont, render.missing=NULL)
+```
+
+Birthweight based on self-report from mother/guardian.
+
+## Treatment coverage (Display 3)
+```{r treatment coverage, echo=F, message=F}
+# special render function to only produce frequency (not percentage too) 
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d", FREQ))))
+}
+
+#treatment coverage
+bind_rows(
+  # total enrolled
+  df_eligibility %>%
+    filter(enrolled==1) %>%
+    select(childID, TL) %>%
+    mutate(Status = "Enrolled"),
+  
+  # total treated
+  df_treatment %>%
+    # find unique participants to avoid counting duplicates twice
+    filter(isAdministered==1 & !duplicated(childID)) %>%
+    select(childID, TL) %>%
+    mutate(Status = "Treated")
+
+  # # link by childID
+  # by="childID"
+) %>%
+  table1(~ Status | TL, data = ., overall = F,
+         render.categorical=my.render.cat)
+```
+
+Counts of study participants that were enrolled and treated, as well as the percent of the enrolled that were treated.
+
+## Follow-up visits (Display 4)
+```{r followup coverage, echo=F}
+#Prepare table
+counts.all[, timepoint := fct_relevel(timepoint, c("7-day", "14-day", "21-day",
+                                                   "7-21 day", "3-month", "6-month",
+                                                   "12-month"))]
+counts.overall <- counts.all[,.(expected = sum(expected), actual = sum(actual),
+                                window = sum(window)), by=c("timepoint", "TL")]
+
+#add overall row
+row.overall <- data.table(timepoint="Overall", 
+                          counts.all[,.(expected = sum(expected), actual = sum(actual),
+                                        window = sum(window)), by="TL"])
+counts.overall <- rbind(counts.overall, row.overall)
+counts.overall[, Ratio := percent(actual/expected, accuracy = .1)]
+
+#table
+setorderv(counts.overall, c("timepoint", "TL"))
+bold_rows <- which(counts.overall[,timepoint]=="Overall")
+kable(counts.overall, align = "c", col.names = c("Timepoint", "Arm", "Expected visits",
+                                                 "Actual visits", "In window", "Follow-up (%)")) %>%
+  kable_styling(bootstrap_options = c("striped","condensed"), full_width = TRUE) %>% 
+  row_spec(c(0, bold_rows), bold=TRUE)
+```
+*In window* refers to number of participants missing follow-up but still within the respective time window (+3 days for 7-day, 14-day, and 21-day follow-up; +21 days for 3-month; +42 days for 6-month and 12-month follow-up). *Expected visits* for each child are based on the days between enrollment date and the report date. For example, a child enrolled 10 days ago would have an expected 7-day visit but not an expected 14-day visit.
+\newline **Timepoints**: 7, 14, and 21 days *after treatment*. 3, 6, and 12 months *after birth*. We are currently only conducting 1 interview within 21 days of treatment - shown in the 7-21 day timepoint.
+
+## Adverse events (Display 5)
+```{r ae, echo=F}
+#adverse event counts by arm
+df_followup %>%
+  # q_5_6__7 column represents "none of the above" for adverse events
+  select(childID, TL, timepoint, starts_with("q_5_6__"), -q_5_6__7) %>%
+  gather(key="key", value = "value",
+         starts_with("q_5_6__")) %>%
+  filter(value==1) %>%
+  mutate(value2 = case_when(
+    key == "q_5_6__1" ~ "Fever",
+    key == "q_5_6__2" ~ "Diarrhea",
+    key == "q_5_6__3" ~ "Vomiting",
+    key == "q_5_6__4" ~ "Abdominal pain",
+    key == "q_5_6__5" ~ "Rash",
+    key == "q_5_6__6" ~ "Constipation"
+  )) %>%
+  set_variable_labels(value2 = "Adverse Events") %>%
+  table1(~ value2 | TL, data = .)
+```
+
+Each participant was interviewed at least once in 7-21 days following treatment. The display above shows the number of adverse events reported in the 7-21 days following treatment.
+
+## Hospitalization and/or death (Display 6)
+```{r hospitalizations and deaths, echo=FALSE}
+#counts by region of children that have died or been hospitalized
+df_followup %>%
+  filter(hospitalVisit==1 | vitalStatus==2) %>%
+  mutate(hosp_o_death = "Total") %>%
+  set_variable_labels(hosp_o_death = "Hospitalization and/or death") %>%
+  table1(~ hosp_o_death | TL, data = ., render.categorical=my.render.cat)
+```
+
+Total participants hospitalized and/or died as reported at 7-21 day, 3-month, 6-month, and 12-month visits.
+
+```{r calculate person time, echo=F}
+#calculate person-time at risk
+#find most recent follow-up visit for each child
+df_followup[, recent_timepoint := max(timepoint), by="childID"]
+df_followup[, recent_timepoint6mo := ifelse(recent_timepoint==365, 180, recent_timepoint)]
+df_followup[recent_timepoint != timepoint, sec_recent_timepoint := max(timepoint), by="childID"]
+dt.persont <- df_followup[timepoint==recent_timepoint | timepoint==sec_recent_timepoint,
+                          .(childID, startDate, vitalStatus, timepoint, region_name, 
+                            recent_timepoint, sec_recent_timepoint, recent_timepoint6mo, TL)]
+dt.persont <- merge(dt.persont, df_baseline[,.(childID, startDate)], by="childID", all.x=T)
+
+#subtract the number of days between enrollment and follow-up visit
+died_6mo_ids <- df_followup %>% filter(vitalStatus==2 & timepoint<=180) %>% pull(unique(childID))
+died_ids <- df_followup %>% filter(vitalStatus==2) %>% pull(unique(childID))
+
+#calculate 6-mo person time
+dt.persont_6mo <- bind_rows(
+  #the children that have not died
+  dt.persont %>%
+    filter(childID %in% setdiff(childID, died_6mo_ids) & 
+             timepoint==recent_timepoint6mo & timepoint<=180) %>%
+    mutate(person_days=as.numeric(difftime(startDate.x, startDate.y, units = "days"))),
+  #the children that have died
+  bind_rows(
+    
+    #find the person time from baseline to visit before death visit
+    dt.persont %>%
+      filter(childID %in% died_6mo_ids & (vitalStatus==1 & 
+                                            timepoint==sec_recent_timepoint & timepoint<=90) 
+                                      | (vitalStatus==2 & timepoint==7)) %>%
+      mutate(person_days=as.integer(difftime(startDate.x, startDate.y, units = "days"))),
+    
+    #find the midpoint between final alive visit and death interview
+    dt.persont %>%
+      filter(childID %in% died_6mo_ids & (timepoint==recent_timepoint6mo | 
+                                        timepoint==sec_recent_timepoint)) %>%
+      arrange(childID, -vitalStatus) %>%
+      group_by(childID, TL) %>%
+      summarise(person_days=as.integer(difftime(first(startDate.x), last(startDate.x)))/2)
+  ) %>% 
+    group_by(childID, TL) %>%
+    summarise(person_days=sum(person_days))
+) %>% 
+  data.table()
+```
+
+## Six-month mortality (Display 7)
+```{r deaths at 6 months, echo=FALSE}
+#number of deaths by arm and overall
+n_died6mo <- df_followup %>%
+  left_join(df_baseline %>% select(childID, enrollDate=startDate), by="childID") %>% 
+  ##all deaths within 8 months of enrollment are included in 6-month mortality
+  filter(vitalStatus==2 & difftime(startDate, enrollDate, units = "days")<245) %>%
+  group_by(TL) %>%
+  summarise(Deaths=n()) %>% as.data.table()
+
+n_died6mo.tot <- df_followup %>%
+  left_join(df_baseline %>% select(childID, enrollDate=startDate), by="childID") %>% 
+   ##all deaths within 8 months of enrollment are included in 6-month mortality
+  filter(vitalStatus==2 & difftime(startDate, enrollDate, units = "days")<245) %>%
+  summarise(Deaths=n()) %>% mutate(TL="Overall") %>% as.data.table()
+
+#bind together
+n_died6mo <- rbind(n_died6mo, n_died6mo.tot)
+
+#person time by city and overall
+dt.persont.tab <- dt.persont_6mo[,.(person_time = round(sum(person_days, na.rm = T)/365,2)),
+                             by="TL"]
+dt.persont.tot <- dt.persont_6mo[,.(person_time = round(sum(person_days, na.rm = T)/365,2),
+                                TL="Overall")]
+dt.persont.tab <- rbind(dt.persont.tab, dt.persont.tot)
+
+#merge together deaths and person time to calculate rate
+death6rate <- merge(n_died6mo, dt.persont.tab, by="TL", all.y = T)
+
+#estimate rate and CI's using fxn from epitools package
+death6rate[, rate := round(pois.exact(Deaths, person_time)[[3]]*1000, 1)]
+death6rate[, lower := round(pois.exact(Deaths, person_time)[[4]]*1000, 1)]
+death6rate[, upper := round(pois.exact(Deaths, person_time)[[5]]*1000, 1)]
+death6rate[, rate := paste0(rate, " (", lower, " to ", upper, ")")]
+death6rate[, c("lower", "upper") := NULL]
+
+## make table
+death6rate %>%
+  arrange(Deaths) %>%
+  kable(col.names = c("Arm", "Deaths", "Person-years", 
+                                "Mortality/1000 py (95% CI)")) %>%
+  row_spec(c(0, 3),bold=TRUE) %>%
+  kable_styling() %>%
+  column_spec(column = c(1,2,3,4), width = "150px") 
+```
+
+## Vital status at 6-months (Display 8)
+```{r vital status, echo=F}
+# join with baseline form to link enroll date with follow-up date
+df_followup %>%
+  left_join(df_baseline %>% select(childID, enrollDate=startDate),
+            by="childID") %>%
+  # subset to participants at 6-mo visit or participants that died within 8 months of followup
+  filter(timepoint == 180 | (vitalStatus==2 & difftime(startDate, enrollDate, units = "days")<245)) %>%
+  mutate(
+    status_clean =
+      case_when(
+        vitalStatus == 1 ~ "Alive",
+        vitalStatus == 2 ~ "Dead",
+        vitalStatus == 3 ~ "Moved",
+        vitalStatus == 4 ~ "Unknown"
+      )
+  ) %>% 
+  set_variable_labels(status_clean = "Vital Status") %>%
+  table1(~ status_clean | TL, data = .)
+```
+
+## Hazard ratio permutation distribution (Display 9)
+```{r glm model, echo=F}
+# prep the data - include all participants who have reached 6-mo visit or died before it
+model_df <- df_followup %>%
+  left_join(df_baseline %>% select(childID, enrollDate=startDate), by="childID") %>%
+  # subset to participants at 6-mo visit or participants that died within 8 months of followup
+  filter(timepoint == 180 | (vitalStatus==2 & difftime(startDate, enrollDate, units = "days")<245)) %>%
+  mutate(death_response =
+           case_when(
+             vitalStatus == 1 ~ 0,
+             vitalStatus == 2 ~ 1
+            )
+         )
+
+# set seed
+set.seed(2^3)
+
+# run the model
+model_df$TL <- factor(model_df$TL, levels = c("Placebo", "Azithromycin"))
+mod_empir <- glm(death_response ~ TL, data = model_df, family = binomial(link = cloglog))
+
+# pull the effects
+coef_empir <- summary(mod_empir)$coef[2,1]
+sd_empir <- summary(mod_empir)$coef[2,2]
+
+# calculate the upper and lower limits on the HR ratio (coefficient from the model)
+upper_empir <- exp(coef_empir+(1.96*sd_empir)) %>% round(3)
+lower_empir <- exp(coef_empir-(1.96*sd_empir)) %>% round(3)
+coef_empir_exp <- exp(coef_empir) %>% round(3)
+
+# permute the treatment allocation and rerun the model to 
+# estimate distribution of the model coefficient under the Null
+response_vec <- model_df$death_response
+treatment_alloc <- model_df$TL
+
+# function that iterates i times, each time saving the model coefficient
+permute_fxn <- function(i){
+  # pull random numbers the length of treatment vector from uniform distribution 0-1
+  reshuffle_vec <- runif(length(treatment_alloc))
+  
+  # reshuffle the treatment allocation based on random numbers generated
+  shuffled_arms <- treatment_alloc[order(reshuffle_vec)]
+  
+  # run the model on shuffled allocation
+  mod <- glm(response_vec ~ shuffled_arms, family = binomial(link = cloglog))
+  
+  # extract and save the coefficient
+  summary(mod)$coef[2,1]
+}
+
+# run the function N times to produce the null distribution
+N <- 10000
+null_vec <- map_dbl(1:N, permute_fxn)
+
+# calculate the permuation test p-value
+p_value <- sum(abs(null_vec) > abs(coef_empir)) / length(null_vec)
+mod_summary <- summary(mod_empir)
+# Summary of model: `r mod_summary`
+
+# plot the null distribution with the empirical value
+df <- data.frame(null_vec=null_vec)
+ggplot(df, aes(x=null_vec)) + 
+  geom_histogram(alpha=0.5, color=NA) +
+  geom_vline(xintercept = coef_empir, color="black") +
+  xlab("Null distribution") +
+  theme_bw()
+```
+
+Distribution of the log hazard ratio under the null hypothesis using permutation test. Black line represents the estimated log hazard ratio from data.
+
+Permutation test p-value: `r p_value`
+
+## Mortality test (Display 10)
+```{r prepare vital status table, echo=F}
+# join with baseline form to link enroll date with follow-up date
+df <- df_followup %>%
+  left_join(df_baseline %>% select(childID, enrollDate=startDate),
+            by="childID") %>%
+  # subset to participants at 6-mo visit or participants that died within 8 months of followup
+  filter(timepoint == 180 | (vitalStatus==2 & difftime(startDate, enrollDate, units = "days")<245)) %>%
+  group_by(TL) %>%
+  # tabulate deaths and total participants by arm
+  summarise(N_ch=n(), N_d=sum(vitalStatus==2)) %>%
+  # calculate cumulative mortality
+  mutate(d_percent=percent(N_d/N_ch, accuracy = .01)) %>%
+  pivot_wider(names_from=TL, values_from=c("N_ch", "N_d", "d_percent")) %>%
+  select(N_ch_Azithromycin, N_d_Azithromycin, d_percent_Azithromycin, 
+         N_ch_Placebo, N_d_Placebo, d_percent_Placebo)
+
+# prepare the hazard ratio from the model and p-value
+df_hr <- data.frame(hr=paste0(coef_empir_exp, " (", lower_empir, " - ", upper_empir, ")"), pvalue=p_value)
+
+# bind everything together
+df <- bind_cols(data.frame(outcome="Death by 6 month visit"), df, df_hr)
+
+# render table
+kable(df, col.names = c("Outcome", "N Children", "N Deaths", "%", "N Children",
+                     "N Deaths", "%", "HR (95%)", "P-value*"),
+      caption = "Mortality difference by arm estimated using binomial regression with a complementary log-log link."
+      ) %>%
+  kable_styling() %>%
+  add_header_above(c(" " = 1, "Azithromycin" = 3,  "Placebo" = 3, " " = 2))
+```
